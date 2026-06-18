@@ -79,30 +79,52 @@ export function CreatePOModal({ isOpen, onClose }: CreatePOModalProps) {
             </div>
           ) : approvedMRs.length > 0 ? (
             <ul className="space-y-2">
-              {approvedMRs.map((mr) => (
-                <li key={mr.id}>
-                  <button
-                    onClick={() => handleSelectMr(mr.id)}
-                    className="w-full text-left p-3 border rounded-lg hover:bg-accent transition-colors flex justify-between items-start group"
-                  >
-                    <div className="flex-1 min-w-0 pr-4">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-base">
-                          {mr.kode_mr}
-                        </span>
-                        <Badge variant="secondary" className="text-xs">
-                          {mr.department}
-                        </Badge>
+              {approvedMRs.map((mr) => {
+                // MR yang di-hold / ditolak tetap ditampilkan tetapi tidak bisa
+                // dijadikan PO (abu-abu + keterangan status).
+                const ineligible =
+                  mr.status === "On Hold" || mr.status === "Rejected";
+                return (
+                  <li key={mr.id}>
+                    <button
+                      onClick={() => handleSelectMr(mr.id)}
+                      disabled={ineligible}
+                      title={
+                        ineligible
+                          ? `MR berstatus "${mr.status}" tidak bisa diproses jadi PO`
+                          : undefined
+                      }
+                      className={
+                        ineligible
+                          ? "w-full text-left p-3 border rounded-lg flex justify-between items-start opacity-50 cursor-not-allowed bg-muted/40"
+                          : "w-full text-left p-3 border rounded-lg hover:bg-accent transition-colors flex justify-between items-start group"
+                      }
+                    >
+                      <div className="flex-1 min-w-0 pr-4">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-base">
+                            {mr.kode_mr}
+                          </span>
+                          <Badge variant="secondary" className="text-xs">
+                            {mr.department}
+                          </Badge>
+                          {ineligible && (
+                            <Badge variant="destructive" className="text-xs">
+                              {mr.status}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-2 line-clamp-3 break-words">
+                          {mr.remarks || "Tidak ada remarks."}
+                        </p>
                       </div>
-                      {/* REVISI: Line clamp untuk remarks */}
-                      <p className="text-sm text-muted-foreground mt-2 line-clamp-3 break-words">
-                        {mr.remarks || "Tidak ada remarks."}
-                      </p>
-                    </div>
-                    <FilePlus2 className="h-5 w-5 text-muted-foreground group-hover:text-primary flex-shrink-0 mt-1" />
-                  </button>
-                </li>
-              ))}
+                      {!ineligible && (
+                        <FilePlus2 className="h-5 w-5 text-muted-foreground group-hover:text-primary flex-shrink-0 mt-1" />
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <div className="text-center h-full flex flex-col justify-center items-center py-8">

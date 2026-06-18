@@ -373,7 +373,6 @@ export function PoManagementClientContent() {
           "Jenis Pembayaran": po.payment_term || "N/A",
           "Total Harga": po.total_price,
           Pembuat: po.users_with_profiles?.nama || "N/A",
-          Perusahaan: po.company_code,
           "Tanggal Dibuat": formatDateFriendly(po.created_at),
         };
       });
@@ -499,51 +498,6 @@ export function PoManagementClientContent() {
               </Select>
             </div>
 
-            {/* 4. Filter Perusahaan (Dynamic) */}
-            {(adminProfile?.company === "LOURDES" ||
-              adminProfile?.company === "GMI" ||
-              adminProfile?.company === "GIS") && (
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium">Perusahaan</label>
-                <Select
-                  onValueChange={(value) =>
-                    handleFilterChange({
-                      company: value === "all" ? undefined : value,
-                    })
-                  }
-                  defaultValue={companyFilter || "all"}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Filter perusahaan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua (Sesuai Akses)</SelectItem>
-                    {/* LOURDES */}
-                    {adminProfile.company === "LOURDES" && (
-                      <>
-                        <SelectItem value="GMI">GMI</SelectItem>
-                        <SelectItem value="GIS">GIS</SelectItem>
-                        <SelectItem value="LOURDES">LOURDES</SelectItem>
-                      </>
-                    )}
-                    {/* GMI */}
-                    {adminProfile.company === "GMI" && (
-                      <>
-                        <SelectItem value="GMI">GMI</SelectItem>
-                        <SelectItem value="LOURDES">LOURDES</SelectItem>
-                      </>
-                    )}
-                    {/* GIS */}
-                    {adminProfile.company === "GIS" && (
-                      <>
-                        <SelectItem value="GIS">GIS</SelectItem>
-                        <SelectItem value="LOURDES">LOURDES</SelectItem>
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
 
           {/* Row 2: Tanggal & Harga */}
@@ -614,7 +568,6 @@ export function PoManagementClientContent() {
               <TableHead>Kode PO</TableHead>
               <TableHead>Ref. Kode MR</TableHead>
               <TableHead>Pembuat</TableHead>
-              <TableHead>Perusahaan</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Payment</TableHead>
               <TableHead>Total Harga</TableHead>
@@ -625,7 +578,7 @@ export function PoManagementClientContent() {
           <TableBody>
             {loading || isPending ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center h-24">
+                <TableCell colSpan={9} className="text-center h-24">
                   <div className="flex justify-center items-center gap-2">
                     <Loader2 className="h-5 w-5 animate-spin" />
                     Memuat data...
@@ -643,9 +596,6 @@ export function PoManagementClientContent() {
                     {po.material_requests?.kode_mr || "N/A"}
                   </TableCell>
                   <TableCell>{po.users_with_profiles?.nama || "N/A"}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{po.company_code || "N/A"}</Badge>
-                  </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{po.status}</Badge>
                   </TableCell>
@@ -674,7 +624,7 @@ export function PoManagementClientContent() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={10} className="text-center h-24">
+                <TableCell colSpan={9} className="text-center h-24">
                   Tidak ada Purchase Order yang ditemukan.
                 </TableCell>
               </TableRow>

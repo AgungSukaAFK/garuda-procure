@@ -15,6 +15,7 @@ import {
   Terminal,
   Power,
   PowerOff,
+  KeyRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -89,12 +90,7 @@ const dataDepartment: ComboboxData = [
     list.findIndex((x) => x.value === item.value) === index,
 );
 
-// REVISI: Data untuk Company
-const dataCompany: ComboboxData = [
-  { label: "GIS (Global Inti Sejati)", value: "GIS" },
-  { label: "GMI (Garuda Mart Indonesia)", value: "GMI" },
-  { label: "LOURDES (Korporat)", value: "LOURDES" },
-];
+// (Combobox company dihapus — sistem single-company GMI)
 
 function EditUserPageContent({ params }: { params: { userid: string } }) {
   const [editMode, setEditMode] = useState(false);
@@ -113,6 +109,8 @@ function EditUserPageContent({ params }: { params: { userid: string } }) {
   const [updateSuccess, setUpdateSuccess] = useState<boolean>(false);
   const [isTogglingActive, setIsTogglingActive] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
   const router = useRouter();
   const { userid } = params;
 
@@ -265,6 +263,30 @@ function EditUserPageContent({ params }: { params: { userid: string } }) {
     }
   };
 
+  const handleResetPassword = async () => {
+    if (!user) return;
+    if (newPassword.length < 6) {
+      toast.error("Password minimal 6 karakter.");
+      return;
+    }
+    setIsResetting(true);
+    try {
+      const res = await fetch("/api/v1/admin/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, newPassword }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Gagal mereset password.");
+      setNewPassword("");
+      toast.success(`Password untuk "${user.nama || user.email}" berhasil direset.`);
+    } catch (error: any) {
+      toast.error("Gagal mereset password", { description: error.message });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   if (loading) {
     return (
       <Content size="md" title="Edit Profil">
@@ -338,22 +360,6 @@ function EditUserPageContent({ params }: { params: { userid: string } }) {
                 value={formData.nrp || ""}
                 onChange={handleInputChange}
                 placeholder="Nomor Registrasi Pokok"
-              />
-            )}
-          </div>
-
-          {/* REVISI: Company */}
-          <div>
-            <Label className="mb-2 block font-medium">Perusahaan</Label>
-            {!editMode ? (
-              <p className="p-2 border rounded-md bg-muted/50 min-h-10">
-                {user.company || "-"}
-              </p>
-            ) : (
-              <Combobox
-                data={dataCompany}
-                onChange={(value) => handleComboboxChange("company", value)}
-                defaultValue={formData.company || ""}
               />
             )}
           </div>
@@ -497,6 +503,63 @@ function EditUserPageContent({ params }: { params: { userid: string } }) {
               </AlertDialogContent>
             </AlertDialog>
           )}
+        </div>
+      </Content>
+
+      {/* --- Kartu terpisah: Reset Password --- */}
+      <Content
+        size="md"
+        title="Reset Password"
+        description="Atur ulang password login user ini secara manual."
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Masukkan password baru untuk akun{" "}
+            <span className="font-medium">{user.nama || user.email}</span>.
+            Sampaikan password baru ini ke user secara aman.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="newPassword">Password Baru</Label>
+            <Input
+              id="newPassword"
+              type="password"
+              placeholder="Minimal 6 karakter"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              disabled={isResetting}
+            />
+          </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="secondary"
+                disabled={isResetting || newPassword.length < 6}
+              >
+                {isResetting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <KeyRound className="mr-2 h-4 w-4" />
+                )}
+                Reset Password
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reset password akun ini?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Password lama akun &quot;{user.nama || user.email}&quot; akan
+                  diganti dengan yang baru dan langsung berlaku. Pastikan Anda
+                  menyampaikannya ke user yang bersangkutan.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Batal</AlertDialogCancel>
+                <AlertDialogAction onClick={handleResetPassword}>
+                  Ya, Reset
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </Content>
     </>

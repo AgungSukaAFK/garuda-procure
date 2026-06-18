@@ -186,12 +186,13 @@ export default function ApprovalPOPage() {
                   <TableHead>Jenis</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Tanggal Diproses</TableHead>
+                  <TableHead>Tanda Tangan</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {!po.approvals || po.approvals.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center">
+                    <TableCell colSpan={5} className="text-center">
                       Belum ada riwayat persetujuan.
                     </TableCell>
                   </TableRow>
@@ -207,6 +208,23 @@ export default function ApprovalPOPage() {
                         {app.processed_at
                           ? formatDateWithTime(app.processed_at)
                           : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {app.signature_url ? (
+                          <div className="flex items-center gap-2">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={app.signature_url}
+                              alt="Tanda tangan"
+                              className="h-10 max-w-[120px] rounded border bg-white object-contain p-1"
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {app.printed_name}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))

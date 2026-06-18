@@ -271,14 +271,6 @@ export default function Dashboard() {
             </p>
           </div>
 
-          {/* REVISI: Company (Read-Only) */}
-          <div>
-            <Label className="mb-2 block font-medium">Perusahaan</Label>
-            <p className="p-2 border border-border rounded-md bg-muted/30 text-muted-foreground min-h-[36px] flex items-center">
-              {profile?.company || "-"}
-            </p>
-          </div>
-
           <div>
             <Label className="mb-2 block font-medium">Lokasi</Label>
             {!editMode ? (

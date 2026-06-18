@@ -662,7 +662,7 @@ function ValidateMRPageContent({ params }: { params: { id: string } }) {
               {(mr.attachments as Attachment[]).map((file, index) => (
                 <li key={index}>
                   <Link
-                    href={`https://xdkjqwpvmyqcggpwghyi.supabase.co/storage/v1/object/public/mr/${file.url}`}
+                    href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/mr/${file.url}`}
                     target="_blank"
                     className="flex items-center gap-2 text-sm text-primary hover:underline"
                   >

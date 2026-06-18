@@ -1,4 +1,9 @@
-import { ChevronsUpDown, LogOut, SquareUserRound } from "lucide-react";
+import {
+  ChevronsUpDown,
+  FileSignature,
+  LogOut,
+  SquareUserRound,
+} from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -91,6 +96,12 @@ export function NavUser({
                   <SquareUserRound />
                   <a href="/profile" className="w-full">
                     My Profile
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <FileSignature />
+                  <a href="/signatures" className="w-full">
+                    My Signature
                   </a>
                 </DropdownMenuItem>
               </DropdownMenuGroup>

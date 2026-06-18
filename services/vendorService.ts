@@ -50,9 +50,15 @@ export const updateVendor = async (
   id: number,
   updatedData: Partial<Vendor>,
 ) => {
+  // Buang kolom yang tidak boleh di-update (id auto-identity, created_at).
+  const { id: _id, created_at: _ca, ...patch } = updatedData as Partial<Vendor> & {
+    created_at?: string;
+  };
+  void _id;
+  void _ca;
   const { data, error } = await supabase
     .from("vendors")
-    .update(updatedData)
+    .update(patch)
     .eq("id", id)
     .select()
     .single();

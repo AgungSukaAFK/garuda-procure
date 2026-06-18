@@ -32,13 +32,13 @@ import {
   BadgeDollarSign,
   Briefcase,
   PackagePlus,
+  PackageCheck,
   ArchiveRestore,
   Bell,
   Wallet,
   PlusCircle,
   FileSignature,
   Users,
-  Warehouse,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -70,6 +70,11 @@ const data = {
       title: "Cost Center Management",
       url: "/cost-center-management",
       icon: BadgeDollarSign,
+    },
+    {
+      title: "Feedback Masuk",
+      url: "/feedback-management",
+      icon: MessageSquareShare,
     },
   ],
   navMain: [
@@ -211,6 +216,27 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
       });
     }
 
+    // MR Saya: khusus requester, daftar MR miliknya sendiri.
+    if (profile?.role === "requester") {
+      const mrIdx = baseNav.findIndex(
+        (item) => item.title === "Material Request",
+      );
+      baseNav.splice(mrIdx !== -1 ? mrIdx + 1 : 1, 0, {
+        title: "MR Saya",
+        url: "/my-mr",
+        icon: FileSearch2,
+      });
+    }
+
+    // Goods Receipt: khusus GA (atau admin) untuk menerima barang PO.
+    if (isGADepartment(profile?.department) || profile?.role === "admin") {
+      baseNav.splice(1, 0, {
+        title: "Goods Receipt",
+        url: "/goods-receipt",
+        icon: PackageCheck,
+      });
+    }
+
     if (
       profile?.department === "General Manager" ||
       isGADepartment(profile?.department)
@@ -219,17 +245,6 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         title: "Cost Center Management",
         url: "/cost-center-management",
         icon: BadgeDollarSign,
-      });
-    }
-
-    // Stok GA: hanya GA & Admin
-    if (isGADepartment(profile?.department) || profile?.role === "admin") {
-      const barangIdx = baseNav.findIndex((item) => item.title === "Barang");
-      const insertAt = barangIdx !== -1 ? barangIdx + 1 : baseNav.length;
-      baseNav.splice(insertAt, 0, {
-        title: "Stok GA",
-        url: "/stok-ga",
-        icon: Warehouse,
       });
     }
 

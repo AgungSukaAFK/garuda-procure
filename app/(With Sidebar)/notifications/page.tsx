@@ -10,14 +10,28 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   Bell,
   CheckCheck,
   MessageSquare,
   CheckCircle2,
   Info,
+  Eye,
+  Check,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Content } from "@/components/content";
+import { cn } from "@/lib/utils";
 import { Notification } from "@/type";
 
 const formatDate = (dateString: string) => {
@@ -89,17 +103,34 @@ export default function NotificationsPage() {
     fetchNotifications();
   }, []);
 
-  const handleItemClick = async (notif: Notification) => {
-    if (!notif.is_read) {
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n)),
-      );
-      await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", notif.id);
-    }
+  const markAsRead = async (notif: Notification) => {
+    if (notif.is_read) return;
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n)),
+    );
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("id", notif.id);
+  };
+
+  // View: tandai dibaca lalu buka tautannya (jika ada).
+  const handleView = async (notif: Notification) => {
+    await markAsRead(notif);
     if (notif.link) router.push(notif.link);
+  };
+
+  const handleDelete = async (notif: Notification) => {
+    const prev = notifications;
+    setNotifications((p) => p.filter((n) => n.id !== notif.id));
+    const { error } = await supabase
+      .from("notifications")
+      .delete()
+      .eq("id", notif.id);
+    if (error) {
+      setNotifications(prev); // rollback
+      toast.error("Gagal menghapus notifikasi", { description: error.message });
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -122,24 +153,43 @@ export default function NotificationsPage() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    const prev = notifications;
+    setNotifications([]);
+    const { error } = await supabase
+      .from("notifications")
+      .delete()
+      .eq("user_id", user.id);
+    if (error) {
+      setNotifications(prev); // rollback
+      toast.error("Gagal menghapus semua notifikasi", {
+        description: error.message,
+      });
+    } else {
+      toast.success("Semua notifikasi dihapus");
+    }
+  };
+
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="col-span-12 w-full space-y-4">
         <Skeleton className="h-8 w-48" />
-        <div className="space-y-2">
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-20 w-full" />
-        </div>
+        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-24 w-full rounded-xl" />
       </div>
     );
   }
 
   return (
-    <Content>
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="col-span-12 w-full space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold tracking-tight">Notifikasi</h1>
           {unreadCount > 0 && (
@@ -149,68 +199,129 @@ export default function NotificationsPage() {
           )}
         </div>
 
-        {unreadCount > 0 && (
-          <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
-            <CheckCheck className="mr-2 h-4 w-4" />
-            Tandai semua dibaca
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
+              <CheckCheck className="mr-2 h-4 w-4" />
+              Tandai semua dibaca
+            </Button>
+          )}
+          {notifications.length > 0 && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Hapus semua
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Hapus semua notifikasi?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Seluruh notifikasi Anda akan dihapus permanen dan tidak dapat
+                    dikembalikan.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Batal</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteAll}>
+                    Ya, Hapus Semua
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-              <Bell className="h-12 w-12 mb-4 opacity-20" />
-              <p className="font-medium">Tidak ada notifikasi.</p>
-              <p className="text-sm mt-1">
-                Anda akan mendapat notifikasi saat ada aktivitas baru.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y">
-              {notifications.map((notif) => (
-                <div
-                  key={notif.id}
-                  onClick={() => handleItemClick(notif)}
-                  className={`relative flex items-start gap-4 p-4 transition-colors cursor-pointer hover:bg-muted/50 ${
-                    !notif.is_read ? "bg-blue-50/50 dark:bg-blue-900/10" : ""
-                  }`}
-                >
-                  {!notif.is_read && (
-                    <span className="absolute top-4 right-4 flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-                    </span>
-                  )}
+      {notifications.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+            <Bell className="h-12 w-12 mb-4 opacity-20" />
+            <p className="font-medium">Tidak ada notifikasi.</p>
+            <p className="text-sm mt-1">
+              Anda akan mendapat notifikasi saat ada aktivitas baru.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {notifications.map((notif) => (
+            <div
+              key={notif.id}
+              className={cn(
+                "rounded-xl border bg-card p-4 shadow-sm transition-colors sm:p-5",
+                !notif.is_read
+                  ? "border-blue-200 bg-blue-50/60 dark:border-blue-900/60 dark:bg-blue-900/10"
+                  : // Sudah dibaca: tampil lebih pudar sebagai penanda.
+                    "border-muted bg-muted/20 opacity-70 hover:opacity-100",
+              )}
+            >
+              <div className="flex items-start gap-4">
+                <NotifIcon type={notif.type} />
 
-                  <NotifIcon type={notif.type} />
-
-                  <div className="flex-1 space-y-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium leading-none truncate">
-                        {notif.title}
-                      </p>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                        {formatDate(notif.created_at)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {notif.message}
+                <div className="flex-1 space-y-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    {!notif.is_read && (
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />
+                    )}
+                    <p className="text-sm font-semibold leading-snug">
+                      {notif.title}
                     </p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{notif.message}</p>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                    <span>{formatDate(notif.created_at)}</span>
                     {notif.actor_name && notif.actor_name !== "System" && (
-                      <p className="text-xs text-muted-foreground">
-                        dari{" "}
-                        <span className="font-medium">{notif.actor_name}</span>
-                      </p>
+                      <>
+                        <span>·</span>
+                        <span>
+                          dari{" "}
+                          <span className="font-medium">{notif.actor_name}</span>
+                        </span>
+                      </>
                     )}
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {/* Tombol aksi */}
+              <div className="mt-3 flex flex-wrap justify-end gap-2 border-t pt-3">
+                {notif.link && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleView(notif)}
+                  >
+                    <Eye className="mr-1.5 h-3.5 w-3.5" /> Lihat
+                  </Button>
+                )}
+                {!notif.is_read && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => markAsRead(notif)}
+                  >
+                    <Check className="mr-1.5 h-3.5 w-3.5" /> Tandai dibaca
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => handleDelete(notif)}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Hapus
+                </Button>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </Content>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

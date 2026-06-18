@@ -556,7 +556,6 @@ function PurchaseOrderPageContent() {
           "Jenis Pembayaran": po.payment_term || "N/A",
           "Total Harga PO": po.total_price,
           "Pembuat PO": po.users_with_profiles?.nama || "N/A",
-          Perusahaan: po.company_code,
           "Tanggal Dibuat": formatDateFriendly(po.created_at),
         };
 
@@ -729,56 +728,6 @@ function PurchaseOrderPageContent() {
                   </Select>
                 </div>
 
-                {/* FILTER COMPANY DINAMIS */}
-                {(userProfile?.company === "LOURDES" ||
-                  userProfile?.company === "GMI" ||
-                  userProfile?.company === "GIS") && (
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium">Perusahaan</label>
-                    <Select
-                      onValueChange={(value) =>
-                        handleFilterChange({
-                          company: value === "all" ? undefined : value,
-                        })
-                      }
-                      defaultValue={companyFilter || "all"}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Filter perusahaan" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">
-                          Semua (Sesuai Akses)
-                        </SelectItem>
-
-                        {/* LOURDES: Bisa lihat GMI & GIS */}
-                        {userProfile.company === "LOURDES" && (
-                          <>
-                            <SelectItem value="GMI">GMI</SelectItem>
-                            <SelectItem value="GIS">GIS</SelectItem>
-                            <SelectItem value="LOURDES">LOURDES</SelectItem>
-                          </>
-                        )}
-
-                        {/* GMI: Bisa lihat LOURDES */}
-                        {userProfile.company === "GMI" && (
-                          <>
-                            <SelectItem value="GMI">GMI</SelectItem>
-                            <SelectItem value="LOURDES">LOURDES</SelectItem>
-                          </>
-                        )}
-
-                        {/* GIS: Bisa lihat LOURDES */}
-                        {userProfile.company === "GIS" && (
-                          <>
-                            <SelectItem value="GIS">GIS</SelectItem>
-                            <SelectItem value="LOURDES">LOURDES</SelectItem>
-                          </>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
               </div>
 
               {/* Filter Tanggal & Harga */}
@@ -846,7 +795,6 @@ function PurchaseOrderPageContent() {
                   <TableHead>Ref. Kode MR</TableHead>
                   <TableHead>Vendor</TableHead>
                   <TableHead>Pembuat PO</TableHead>
-                  <TableHead>Perusahaan</TableHead>
                   <TableHead>Status PO</TableHead>
                   <TableHead>Payment</TableHead>
                   <TableHead className="text-right">Total Harga</TableHead>
@@ -858,7 +806,7 @@ function PurchaseOrderPageContent() {
                 {loading || isPending ? (
                   Array.from({ length: limit }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={10}>
+                      <TableCell colSpan={9}>
                         <Skeleton className="h-8 w-full" />
                       </TableCell>
                     </TableRow>
@@ -892,11 +840,6 @@ function PurchaseOrderPageContent() {
 
                       <TableCell>
                         {po.users_with_profiles?.nama || "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {(po as any).company_code}
-                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="secondary">{po.status}</Badge>
@@ -958,7 +901,7 @@ function PurchaseOrderPageContent() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center h-24">
+                    <TableCell colSpan={9} className="text-center h-24">
                       Tidak ada data ditemukan.
                     </TableCell>
                   </TableRow>

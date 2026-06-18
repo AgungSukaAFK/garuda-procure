@@ -37,7 +37,16 @@ import {
   ReceiptText,
   Info,
   UserCircle,
+  Calendar as CalendarIcon,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 export default function CreatePettyCashPage() {
   const router = useRouter();
@@ -45,6 +54,7 @@ export default function CreatePettyCashPage() {
 
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
 
   // State Profil User
   const [profile, setProfile] = useState<{
@@ -252,13 +262,43 @@ export default function CreatePettyCashPage() {
                     Tanggal Dibutuhkan / Transaksi{" "}
                     <span className="text-red-500">*</span>
                   </Label>
-                  <Input
-                    type="date"
-                    value={formData.needed_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, needed_date: e.target.value })
-                    }
-                  />
+                  <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !formData.needed_date && "text-muted-foreground",
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {formData.needed_date ? (
+                          format(new Date(formData.needed_date), "dd MMMM yyyy")
+                        ) : (
+                          <span>Pilih tanggal...</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={
+                          formData.needed_date
+                            ? new Date(formData.needed_date)
+                            : undefined
+                        }
+                        onSelect={(date) => {
+                          setFormData({
+                            ...formData,
+                            needed_date: date ? format(date, "yyyy-MM-dd") : "",
+                          });
+                          setDateOpen(false);
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 

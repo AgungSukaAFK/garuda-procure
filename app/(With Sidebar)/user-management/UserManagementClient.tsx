@@ -305,7 +305,6 @@ export function UserManagementClientContent() {
         Lokasi: user.lokasi,
         Departemen: user.department,
         NRP: user.nrp,
-        Perusahaan: user.company,
         Status:
           (exportActiveMap.get(user.id) ?? true) ? "Aktif" : "Nonaktif",
         "Tanggal Dibuat": formatDateFriendly(user.profile_created_at),
@@ -459,7 +458,6 @@ export function UserManagementClientContent() {
               <TableHead>Nama</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>NRP</TableHead>
-              <TableHead>Perusahaan</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Lokasi</TableHead>
               <TableHead>Departemen</TableHead>
@@ -470,7 +468,7 @@ export function UserManagementClientContent() {
           <TableBody>
             {loading || isPending ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center h-24">
+                <TableCell colSpan={9} className="text-center h-24">
                   <div className="flex justify-center items-center gap-2">
                     <Loader2 className="h-5 w-5 animate-spin" />
                     Memuat data...
@@ -492,7 +490,6 @@ export function UserManagementClientContent() {
                   </TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>{user.nrp || "-"}</TableCell>
-                  <TableCell>{user.company || "-"}</TableCell>
                   <TableCell>{user.role || "-"}</TableCell>
                   <TableCell>{user.lokasi || "-"}</TableCell>
                   <TableCell>{user.department || "-"}</TableCell>
@@ -520,7 +517,7 @@ export function UserManagementClientContent() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={10} className="text-center h-24">
+                <TableCell colSpan={9} className="text-center h-24">
                   Tidak ada user yang ditemukan.
                 </TableCell>
               </TableRow>

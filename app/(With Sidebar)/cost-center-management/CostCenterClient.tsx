@@ -86,11 +86,11 @@ function CostCenterDialog({
       setNewBudget(costCenter.current_budget);
       setReason("");
     } else {
-      // Mode Create
+      // Mode Create — sistem single-company GMI.
       setFormData({
         name: "",
         code: "",
-        company_code: "",
+        company_code: "GMI",
         initial_budget: 0,
       });
       setNewBudget(0); // Reset newBudget juga
@@ -114,10 +114,6 @@ function CostCenterDialog({
       // Mode Edit
       setNewBudget(value);
     }
-  };
-
-  const handleCompanyChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, company_code: value }));
   };
 
   const handleSubmit = async () => {
@@ -146,12 +142,13 @@ function CostCenterDialog({
         toast.success(`Budget untuk ${costCenter.name} berhasil diperbarui.`);
       } else {
         // Mode Create
-        if (!formData.name || !formData.company_code) {
-          toast.error("Nama dan Perusahaan wajib diisi.");
+        const payload = { ...formData, company_code: "GMI" };
+        if (!payload.name) {
+          toast.error("Nama wajib diisi.");
           setLoading(false);
           return;
         }
-        await createCostCenter(formData as any, adminUser.id);
+        await createCostCenter(payload as any, adminUser.id);
         toast.success(`Cost Center ${formData.name} berhasil dibuat.`);
       }
       onSave();
@@ -201,24 +198,6 @@ function CostCenterDialog({
               className="col-span-3"
               disabled={!isCreateMode}
             />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label className="text-right">Perusahaan</Label>
-            <Select
-              name="company_code"
-              onValueChange={handleCompanyChange}
-              value={formData.company_code}
-              disabled={!isCreateMode}
-            >
-              <SelectTrigger className="col-span-3">
-                <SelectValue placeholder="Pilih Perusahaan..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="GMI">GMI</SelectItem>
-                <SelectItem value="GIS">GIS</SelectItem>
-                <SelectItem value="LOURDES">LOURDES</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
           {/* --- REVISI: Ganti Input dengan CurrencyInput --- */}
           <div className="grid grid-cols-4 items-center gap-4">
@@ -551,33 +530,6 @@ export function CostCenterClientContent() {
               onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
-          {adminProfile?.company === "LOURDES" && (
-            <div className="p-4 border rounded-lg bg-muted/50">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-medium">Perusahaan</label>
-                  <Select
-                    onValueChange={(value) =>
-                      handleFilterChange({
-                        company: value === "all" ? undefined : value,
-                      })
-                    }
-                    defaultValue={companyFilter || "all"}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Filter perusahaan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Semua Perusahaan</SelectItem>
-                      <SelectItem value="GMI">GMI</SelectItem>
-                      <SelectItem value="GIS">GIS</SelectItem>
-                      <SelectItem value="LOURDES">LOURDES</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="border rounded-md overflow-x-auto">
@@ -586,7 +538,6 @@ export function CostCenterClientContent() {
               <TableRow>
                 <TableHead>Nama</TableHead>
                 <TableHead>Kode</TableHead>
-                <TableHead>Perusahaan</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Initial Budget</TableHead>
                 <TableHead className="text-right">Current Budget</TableHead>
@@ -596,7 +547,7 @@ export function CostCenterClientContent() {
             <TableBody>
               {loading || isPending ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center h-24">
+                  <TableCell colSpan={6} className="text-center h-24">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin" />
                   </TableCell>
                 </TableRow>
@@ -611,9 +562,6 @@ export function CostCenterClientContent() {
                       </TableCell>
                       <TableCell className={cn("font-mono text-xs", dimClass)}>
                         {item.code || "-"}
-                      </TableCell>
-                      <TableCell className={dimClass}>
-                        <Badge variant="outline">{item.company_code}</Badge>
                       </TableCell>
                       <TableCell>
                         {isInactive ? (
@@ -669,7 +617,7 @@ export function CostCenterClientContent() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center h-24">
+                  <TableCell colSpan={6} className="text-center h-24">
                     Tidak ada data cost center ditemukan.
                   </TableCell>
                 </TableRow>

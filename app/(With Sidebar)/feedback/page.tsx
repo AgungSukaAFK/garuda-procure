@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { User } from "@/type";
+import { createFeedback } from "@/services/feedbackService";
 
 // Import TipTap
 import { useEditor, EditorContent, Editor } from "@tiptap/react";
@@ -88,23 +89,6 @@ const Toolbar = ({ editor }: { editor: Editor | null }) => {
   );
 };
 
-// Fungsi helper untuk konversi file ke Base64
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const base64String = (reader.result as string).split(",")[1];
-      if (base64String) {
-        resolve(base64String);
-      } else {
-        reject(new Error("Gagal mengonversi file ke Base64."));
-      }
-    };
-    reader.onerror = (error) => reject(error);
-  });
-};
-
 export default function FeedbackPage() {
   const [loading, setLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -161,6 +145,11 @@ export default function FeedbackPage() {
       toast.error("Nomor WhatsApp, Kategori, dan Pesan wajib diisi.");
       return;
     }
+    // Validasi nomor HP Indonesia: harus diawali 08 dan 10-13 digit angka.
+    if (!/^08\d{8,11}$/.test(whatsapp.trim())) {
+      toast.error("Nomor WhatsApp harus nomor Indonesia, diawali 08 (mis. 081234567890).");
+      return;
+    }
     if (!currentUser) {
       toast.error(
         "Gagal mendapatkan data user. Silakan coba muat ulang halaman."
@@ -168,61 +157,48 @@ export default function FeedbackPage() {
       return;
     }
 
+    if (attachment && attachment.size > 5 * 1024 * 1024) {
+      toast.error("Ukuran file lampiran tidak boleh melebihi 5MB.");
+      return;
+    }
+
     setLoading(true);
     const toastId = toast.loading("Mengirim feedback...");
 
     try {
-      let attachmentPayload = undefined;
+      let attachmentUrl: string | null = null;
+      let attachmentName: string | null = null;
+
       if (attachment) {
-        if (attachment.size > 5 * 1024 * 1024) {
-          // Validasi ukuran file (5MB)
-          throw new Error("Ukuran file lampiran tidak boleh melebihi 5MB.");
-        }
-        const base64Content = await fileToBase64(attachment);
-        attachmentPayload = [
-          {
-            filename: attachment.name,
-            content: base64Content,
-            encoding: "base64",
-          },
-        ];
+        const supabase = createClient();
+        const fileExt = attachment.name.split(".").pop();
+        const fileName = `${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2)}.${fileExt}`;
+        const filePath = `feedback/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("mr")
+          .upload(filePath, attachment);
+        if (uploadError) throw uploadError;
+
+        const { data: publicUrlData } = supabase.storage
+          .from("mr")
+          .getPublicUrl(filePath);
+        attachmentUrl = publicUrlData.publicUrl;
+        attachmentName = attachment.name;
       }
 
-      const emailHtmlBody = `
-        <h1>Feedback Baru dari Aplikasi</h1>
-        <p>Anda menerima pesan feedback baru dari salah satu pengguna.</p>
-        <hr>
-        <h3>Detail Pengirim:</h3>
-        <ul>
-          <li><strong>Nama:</strong> ${currentUser.nama}</li>
-          <li><strong>Email:</strong> ${currentUser.email}</li>
-          <li><strong>ID Pengguna:</strong> ${currentUser.id}</li>
-          <li><strong>No. WhatsApp:</strong> ${whatsapp}</li>
-        </ul>
-        <h3>Detail Pesan:</h3>
-        <ul>
-          <li><strong>Kategori:</strong> ${finalCategory}</li>
-        </ul>
-        <strong>Pesan:</strong>
-        <div style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 8px; background-color: #f8fafc;">
-          ${message}
-        </div>
-      `;
-
-      const response = await fetch("/api/v1/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: process.env.NEXT_PUBLIC_DEVELOPER_EMAIL,
-          subject: `Feedback Baru: [${finalCategory}] dari ${currentUser.nama}`,
-          html: emailHtmlBody,
-          attachments: attachmentPayload,
-        }),
+      await createFeedback({
+        user_id: currentUser.id,
+        nama: currentUser.nama ?? null,
+        email: currentUser.email ?? null,
+        whatsapp,
+        category: finalCategory,
+        message,
+        attachment_url: attachmentUrl,
+        attachment_name: attachmentName,
       });
-
-      const result = await response.json();
-      if (!response.ok || !result.success)
-        throw new Error(result.error || "Gagal mengirim email dari server.");
 
       toast.success("Terima kasih! Feedback Anda telah terkirim.", {
         id: toastId,
@@ -266,12 +242,27 @@ export default function FeedbackPage() {
             <Input
               id="whatsapp"
               type="tel"
+              inputMode="numeric"
               value={whatsapp}
-              onChange={(e) => setWhatsapp(e.target.value)}
+              onChange={(e) =>
+                // Hanya terima angka (buang huruf/karakter lain saat mengetik).
+                setWhatsapp(e.target.value.replace(/\D/g, ""))
+              }
               placeholder="081234567890"
               required
               disabled={loading}
+              aria-invalid={whatsapp.length > 0 && !/^08\d{8,11}$/.test(whatsapp)}
+              className={
+                whatsapp.length > 0 && !/^08\d{8,11}$/.test(whatsapp)
+                  ? "border-red-500 focus-visible:ring-red-500"
+                  : undefined
+              }
             />
+            {whatsapp.length > 0 && !/^08\d{8,11}$/.test(whatsapp) && (
+              <p className="text-xs text-red-500">
+                Nomor harus diawali 08 dan terdiri dari 10–13 digit angka.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -334,10 +325,12 @@ export default function FeedbackPage() {
                   <span className="truncate">{attachment.name}</span>
                 </div>
                 <Button
+                  type="button"
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 flex-shrink-0"
                   onClick={() => setAttachment(null)}
+                  disabled={loading}
                 >
                   <X className="h-4 w-4" />
                 </Button>

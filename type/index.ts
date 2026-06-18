@@ -9,6 +9,21 @@ export interface Approval {
   role: string;
   department: string;
   processed_at?: string | null;
+  // Tanda tangan elektronik (diisi saat approve via Signature Manager).
+  signature_url?: string | null;
+  printed_name?: string | null;
+  signed_at?: string | null;
+}
+
+export interface UserSignature {
+  id: string;
+  user_id: string;
+  image_url: string;
+  printed_name: string;
+  label: string;
+  is_hidden: boolean;
+  created_at: string;
+  // password_hash sengaja TIDAK ada di tipe client — hanya hidup di server.
 }
 
 // REVISI: Tambahkan field untuk integrasi Master Barang
@@ -58,6 +73,20 @@ export interface Profile {
 }
 
 export type User = Profile;
+
+export interface Feedback {
+  id: number;
+  user_id: string | null;
+  nama: string | null;
+  email: string | null;
+  whatsapp: string | null;
+  category: string;
+  message: string;
+  attachment_url: string | null;
+  attachment_name: string | null;
+  status: "baru" | "dibaca" | "selesai";
+  created_at: string;
+}
 
 export interface MaterialRequest {
   id: string;

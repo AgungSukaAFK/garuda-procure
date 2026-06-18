@@ -182,19 +182,31 @@
 }
 
 @media print {
+  /* Dokumen cetak (#print-root) di-portal sebagai anak langsung <body>.
+     Sembunyikan SEMUA anak <body> lain (app, sidebar, dialog, widget) dengan
+     display:none agar tidak memakan ruang, lalu tampilkan #print-root yang
+     mengalir normal — sehingga aman multi-halaman (tidak terpotong) dan tidak
+     ter-offset sidebar. Andal di Safari & Chrome. */
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+  body > :not(#print-root) {
+    display: none !important;
+  }
+  #print-root {
+    display: block !important;
+  }
+
   .no-print {
     display: none !important;
   }
 
-  .print-only {
-    display: block !important;
-  }
-
   #printable-po-a4 {
-    position: absolute;
-    left: 0;
-    top: 0;
     width: 100%;
+    margin: 0;
     padding: 15mm;
     font-size: 10pt;
     color: black;

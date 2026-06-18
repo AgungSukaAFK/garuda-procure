@@ -381,15 +381,6 @@ export default function MrManagementClient() {
     });
   };
 
-  const handleCompanyToggle = (company: string) => {
-    setSelectedCompanies((prev) =>
-      prev.includes(company)
-        ? prev.filter((c) => c !== company)
-        : [...prev, company],
-    );
-    handleFilterChange({ page: 1 });
-  };
-
   const clearFilters = () => {
     setSearchInput("");
     setStartDateInput("");
@@ -405,14 +396,6 @@ export default function MrManagementClient() {
         setSelectedCompanies([currentUser.company, "LOURDES"]);
       else setSelectedCompanies([currentUser.company]);
     }
-  };
-
-  const getAvailableCompanyOptions = () => {
-    const myCompany = currentUser?.company;
-    if (myCompany === "LOURDES") return ["GMI", "GIS", "LOURDES"];
-    if (myCompany === "GMI") return ["GMI", "LOURDES"];
-    if (myCompany === "GIS") return ["GIS", "LOURDES"];
-    return [myCompany || ""];
   };
 
   const handleDownloadExcel = async () => {
@@ -760,39 +743,6 @@ export default function MrManagementClient() {
               />
             </div>
 
-            {/* FILTER COMPANY */}
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium">Filter Perusahaan</label>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-between bg-background font-normal"
-                  >
-                    <span className="flex items-center gap-2 truncate">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
-                      {selectedCompanies.length > 0
-                        ? `${selectedCompanies.length} Terpilih`
-                        : "Pilih PT"}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <DropdownMenuLabel>Pilih Perusahaan</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {getAvailableCompanyOptions().map((company) => (
-                    <DropdownMenuCheckboxItem
-                      key={company}
-                      checked={selectedCompanies.includes(company)}
-                      onCheckedChange={() => handleCompanyToggle(company)}
-                    >
-                      {company}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
             <div className="lg:col-span-2 flex flex-col gap-2 justify-end">
               <Button
                 className="w-full"
@@ -836,7 +786,6 @@ export default function MrManagementClient() {
               <TableHead>Tujuan Site</TableHead>
               <TableHead>Requester</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Company</TableHead>
               <TableHead>Tanggal Dibuat</TableHead>
               <TableHead>Due Date</TableHead>
               <TableHead className="text-right">Total Estimasi</TableHead>
@@ -883,11 +832,6 @@ export default function MrManagementClient() {
                   <TableCell>{mr.tujuan_site || "N/A"}</TableCell>
                   <TableCell>{mr.users_with_profiles?.nama || "N/A"}</TableCell>
                   <TableCell>{getStatusBadge(mr.status)}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs font-mono">
-                      {mr.company_code}
-                    </Badge>
-                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {formatDateFriendly(mr.created_at ?? undefined)}
                   </TableCell>

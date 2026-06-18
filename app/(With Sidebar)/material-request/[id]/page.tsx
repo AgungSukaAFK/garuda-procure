@@ -276,7 +276,17 @@ function DetailMRPageContent({ params }: { params: { id: string } }) {
       return acc + (Number(item.qty) || 0) * (Number(item.estimasi_harga) || 0);
     }, 0);
 
-    const { users_with_profiles, cost_centers, ...restOfData } = mr as any;
+    // Buang kolom yang tidak boleh di-update (id identity, created_at) dan
+    // field hasil join yang bukan kolom tabel.
+    const {
+      users_with_profiles,
+      cost_centers,
+      id: _id,
+      created_at: _createdAt,
+      ...restOfData
+    } = mr as any;
+    void _id;
+    void _createdAt;
 
     const updateData = {
       ...restOfData,
@@ -321,7 +331,17 @@ function DetailMRPageContent({ params }: { params: { id: string } }) {
       return acc + (Number(item.qty) || 0) * (Number(item.estimasi_harga) || 0);
     }, 0);
 
-    const { users_with_profiles, cost_centers, ...restOfData } = mr as any;
+    // Buang kolom yang tidak boleh di-update (id identity, created_at) dan
+    // field hasil join yang bukan kolom tabel.
+    const {
+      users_with_profiles,
+      cost_centers,
+      id: _id,
+      created_at: _createdAt,
+      ...restOfData
+    } = mr as any;
+    void _id;
+    void _createdAt;
 
     const newDiscussion: Discussion = {
       user_id: currentUser.id,
@@ -657,6 +677,22 @@ function DetailMRPageContent({ params }: { params: { id: string } }) {
     ) {
       return null;
     }
+
+    // Barang dianggap sudah diterima GA bila level MR sudah OPEN 5 atau CLOSE...
+    const goodsReceivedByGA =
+      mr.level === "OPEN 5" ||
+      (typeof mr.level === "string" && mr.level.startsWith("CLOSE"));
+
+    // Requester baru bisa upload BAST & menyelesaikan SETELAH GA menerima barang.
+    if (!goodsReceivedByGA) {
+      return (
+        <p className="text-center text-sm italic text-muted-foreground">
+          Menunggu GA menerima barang di warehouse. Setelah barang diterima, Anda
+          dapat mengunggah BAST dan menyelesaikan MR ini.
+        </p>
+      );
+    }
+
     return (
       <div className="flex flex-col gap-4">
         <div>
@@ -682,7 +718,7 @@ function DetailMRPageContent({ params }: { params: { id: string } }) {
           disabled={actionLoading || isUploading}
         >
           <CheckCheck className="mr-2 h-4 w-4" />
-          Tutup MR (Konfirmasi Barang Lengkap)
+          Selesaikan MR (BAST Diterima)
         </Button>
       </div>
     );
@@ -1511,7 +1547,7 @@ function DetailMRPageContent({ params }: { params: { id: string } }) {
               {(mr.attachments as Attachment[]).map((file, index) => (
                 <li key={index}>
                   <Link
-                    href={`https://xdkjqwpvmyqcggpwghyi.supabase.co/storage/v1/object/public/mr/${file.url}`}
+                    href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/mr/${file.url}`}
                     target="_blank"
                     className="flex items-center gap-2 text-sm text-primary hover:underline"
                   >

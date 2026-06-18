@@ -11,7 +11,7 @@ import {
   PurchaseOrderListItem,
   Attachment,
 } from "@/type";
-import { normalizeMrOrders, updateMrItemStatus } from "./mrService";
+import { normalizeMrOrders } from "./mrService";
 import { PAYMENT_VALIDATOR_USER_ID } from "@/type/enum";
 
 const supabase = createClient();
@@ -366,30 +366,46 @@ export const createPurchaseOrder = async (
     }
   }
 
-  // 3. UPDATE STATUS ITEM DI MR TERKAIT
+  // 3. UPDATE STATUS ITEM DI MR TERKAIT.
+  //    Dilakukan SEKALI TULIS untuk SEMUA item PO. (Sebelumnya tiap item
+  //    di-update paralel dengan baca-ubah-tulis seluruh array `orders`, sehingga
+  //    saling menimpa dan hanya 1 item yang berubah — lost update.)
   if (mr_id && newPo && poData.items && poData.items.length > 0) {
-    const updateMrItemPromises = poData.items.map(async (poItem) => {
-      if (poItem.part_number) {
-        try {
-          await updateMrItemStatus(
-            mr_id,
-            poItem.part_number,
-            {
-              status: "PO Created",
-              poRef: newPo.kode_po,
-            },
-            user_id,
-          );
-        } catch (err) {
-          console.error(
-            `Gagal update status item MR untuk Part ${poItem.part_number}:`,
-            err,
-          );
-        }
-      }
-    });
+    const { data: mrRow, error: mrFetchErr } = await supabase
+      .from("material_requests")
+      .select("orders")
+      .eq("id", mr_id)
+      .single();
 
-    await Promise.all(updateMrItemPromises);
+    if (!mrFetchErr && mrRow) {
+      const poPartNumbers = new Set(
+        poData.items.map((i) => i.part_number).filter(Boolean),
+      );
+      const nowIso = new Date().toISOString();
+      const updatedOrders = (((mrRow.orders as any[]) || []) as any[]).map(
+        (o) => {
+          if (!o.part_number || !poPartNumbers.has(o.part_number)) return o;
+          const currentRefs = Array.isArray(o.po_refs) ? o.po_refs : [];
+          return {
+            ...o,
+            status: "PO Created",
+            po_refs: currentRefs.includes(newPo.kode_po)
+              ? currentRefs
+              : [...currentRefs, newPo.kode_po],
+            updated_by: user_id,
+            updated_at: nowIso,
+          };
+        },
+      );
+
+      const { error: ordersErr } = await supabase
+        .from("material_requests")
+        .update({ orders: updatedOrders })
+        .eq("id", mr_id);
+      if (ordersErr) {
+        console.error("Gagal update status item MR:", ordersErr.message);
+      }
+    }
   }
 
   // 4. UPDATE STATUS & LEVEL MR
@@ -481,14 +497,19 @@ export const updatePurchaseOrder = async (
 };
 
 export const searchBarang = async (query: string): Promise<Barang[]> => {
-  if (!query) return [];
-
-  const { data, error } = await supabase
+  // Tanpa query: tampilkan 15 barang pertama sebagai daftar awal (tidak perlu
+  // mengetik dulu). Dengan query: filter berdasarkan part number / nama.
+  let q = supabase
     .from("barang")
     .select("*, last_purchase_price")
-    .or(`part_number.ilike."%${query}%",part_name.ilike."%${query}%"`)
-    .limit(10);
+    .order("part_name", { ascending: true })
+    .limit(15);
 
+  if (query) {
+    q = q.or(`part_number.ilike."%${query}%",part_name.ilike."%${query}%"`);
+  }
+
+  const { data, error } = await q;
   if (error) {
     console.error("Error searching barang:", error);
     return [];
@@ -521,6 +542,33 @@ export const closePoWithBast = async (id: number, attachments: any[]) => {
 
   if (error) throw error;
   return data;
+};
+
+// PO yang siap diterima GA: status Pending BAST dan barang belum diterima
+// (level MR belum OPEN 5 / CLOSE).
+export const fetchPendingGoodsReceiptPOs = async () => {
+  const { data, error } = await supabase
+    .from("purchase_orders")
+    .select(
+      `id, kode_po, total_price, created_at, mr_id,
+       users_with_profiles!user_id (nama),
+       material_requests!mr_id (kode_mr, level)`,
+    )
+    .eq("status", "Pending BAST")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching POs for goods receipt:", error);
+    throw error;
+  }
+
+  return (data ?? []).filter((po: any) => {
+    const level = po.material_requests?.level;
+    return (
+      level !== "OPEN 5" &&
+      !(typeof level === "string" && level.startsWith("CLOSE"))
+    );
+  });
 };
 
 export const markGoodsAsReceivedByGA = async (mrId: number) => {

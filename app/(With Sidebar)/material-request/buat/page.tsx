@@ -150,6 +150,12 @@ export default function BuatMRPage() {
     const fetchUserData = async () => {
       try {
         const profile = await getActiveUserProfile();
+        // Hanya role 'requester' yang boleh membuat Material Request.
+        if (profile && profile.role !== "requester") {
+          toast.error("Hanya role requester yang dapat membuat Material Request.");
+          router.push("/material-request");
+          return;
+        }
         if (
           profile &&
           profile.department &&
@@ -172,18 +178,21 @@ export default function BuatMRPage() {
               kode_mr: "Pilih perusahaan tujuan dulu...",
             }));
           } else {
-            const newKodeMR = await generateMRCode(
-              profile.department,
-              profile.lokasi,
-              profile.company,
-            );
+            // Tampilkan department/lokasi/company SEGERA (dari profil),
+            // kode MR menyusul karena generate-nya butuh query.
             setFormCreateMR((prev) => ({
               ...prev,
               department: profile.department || "",
               company_code: profile.company || "",
               tujuan_site: profile.lokasi || "",
-              kode_mr: newKodeMR,
+              kode_mr: "Memuat kode...",
             }));
+            const newKodeMR = await generateMRCode(
+              profile.department,
+              profile.lokasi,
+              profile.company,
+            );
+            setFormCreateMR((prev) => ({ ...prev, kode_mr: newKodeMR }));
           }
         } else {
           toast.warning("Profil belum lengkap.");
@@ -614,14 +623,6 @@ export default function BuatMRPage() {
           <div className="flex flex-col gap-2 col-span-12">
             <Label>Kode MR</Label>
             <Input readOnly disabled value={formCreateMR.kode_mr} />
-          </div>
-          <div className="flex flex-col gap-2 col-span-12 md:col-span-4">
-            <Label>Perusahaan</Label>
-            <Input
-              readOnly
-              disabled
-              value={formCreateMR.company_code || "Memuat..."}
-            />
           </div>
           <div className="flex flex-col gap-2 col-span-12 md:col-span-4">
             <Label>Departemen</Label>

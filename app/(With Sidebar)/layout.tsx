@@ -15,6 +15,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { AssistantWidget } from "@/components/assistant/assistant-widget";
 import { createClient } from "@/lib/supabase/client";
 import { redirect, usePathname } from "next/navigation";
 import { Fragment, ReactNode, useEffect } from "react";
@@ -114,6 +115,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
         </SidebarInset>
       </SidebarProvider>
+      <AssistantWidget />
     </>
   );
 }

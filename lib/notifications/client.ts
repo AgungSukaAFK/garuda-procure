@@ -30,6 +30,7 @@ export type NotificationEventType =
   | "po_approved_step"
   | "po_fully_approved"
   | "po_rejected"
+  | "po_goods_receipt"
   | "pc_submitted"
   | "pc_routed"
   | "pc_approved_step"
@@ -214,6 +215,34 @@ export async function notifyGAOnMRSubmit({
     link: `/material-request/validate/${mrId}`,
     resourceId: String(mrId),
     resourceType: "material_request",
+  });
+}
+
+/**
+ * Notify all GA members that a PO is ready for goods receipt (sudah dibayar,
+ * berstatus Pending BAST, menunggu GA menerima barang di warehouse).
+ */
+export async function notifyGAOnGoodsReceiptNeeded({
+  actorId,
+  companyCode,
+  kodePO,
+  poId,
+}: {
+  actorId: string;
+  companyCode: string;
+  kodePO: string;
+  poId: string | number;
+}): Promise<void> {
+  const gaIds = await getGAUserIds(companyCode);
+  const recipients = gaIds.filter((id) => id !== actorId);
+  await sendNotifications(recipients, {
+    actorId,
+    type: "po_goods_receipt",
+    title: "PO Siap Diterima (Goods Receipt)",
+    message: `Purchase Order ${kodePO} menunggu penerimaan barang oleh GA di warehouse.`,
+    link: `/goods-receipt`,
+    resourceId: String(poId),
+    resourceType: "purchase_order",
   });
 }
 

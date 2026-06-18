@@ -1060,7 +1060,7 @@ function AdminEditMRPageContent({ params }: { params: { id: string } }) {
                         className="flex items-center justify-between text-sm p-2 bg-muted/50 rounded"
                       >
                         <a
-                          href={`https://xdkjqwpvmyqcggpwghyi.supabase.co/storage/v1/object/public/mr/${file.url}`}
+                          href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/mr/${file.url}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-2 truncate hover:underline text-primary"

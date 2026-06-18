@@ -39,11 +39,10 @@ export async function middleware(request: NextRequest) {
   const authPaths = [
     "/auth/login",
     "/auth/sign-up",
-    "/auth/forgot-password",
     "/auth/error",
     "/auth/sign-up-success",
     "/auth/confirm",
-    "/auth/update-password",
+    "/auth/callback",
   ];
 
   const pendingPath = "/pending-approval";

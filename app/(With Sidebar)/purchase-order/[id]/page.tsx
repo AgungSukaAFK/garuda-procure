@@ -3,6 +3,7 @@
 "use client";
 
 import { use, useEffect, useState, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { isGADepartment } from "@/lib/constants/departments";
@@ -67,12 +68,16 @@ import {
   fetchPurchaseOrderById,
   closePoWithBast,
   markGoodsAsReceivedByGA,
+  uploadPoAttachment,
 } from "@/services/purchaseOrderService";
 import {
   updateMrItemStatus, // Pastikan ini sudah ada dari Langkah 2
   normalizeMrOrders, // Pastikan ini sudah ada dari Langkah 1
 } from "@/services/mrService";
-import { notifyOnPOApproval } from "@/lib/notifications/client";
+import {
+  notifyOnPOApproval,
+  notifyGAOnGoodsReceiptNeeded,
+} from "@/lib/notifications/client";
 import {
   Dialog,
   DialogContent,
@@ -93,6 +98,7 @@ import { DiscussionSection } from "../../material-request/[id]/discussion-compon
 import { QRCodeCanvas } from "qrcode.react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SignatureSelector } from "@/components/signature/signature-selector";
 import { differenceInCalendarDays } from "date-fns";
 import {
   MR_LEVELS,
@@ -189,6 +195,10 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
   const [userProfile, setUserProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [sigOpen, setSigOpen] = useState(false);
+  // Bukti pembayaran (khusus approver Payment Validator).
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+  const [paymentSkip, setPaymentSkip] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // State Dialogs
@@ -328,6 +338,11 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
         )
       : -1;
 
+  // Apakah giliran approver saat ini adalah Payment Validator (wajib bukti bayar).
+  const isPaymentValidatorTurn =
+    myApprovalIndex !== -1 &&
+    po?.approvals?.[myApprovalIndex]?.type === APPROVAL_TYPE_PAYMENT_VALIDATOR;
+
   const isMyTurnForApproval =
     myApprovalIndex !== -1 && po && po.approvals
       ? po.approvals
@@ -338,7 +353,15 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
   const canEditPO =
     userProfile?.role === "approver" || userProfile?.role === "admin";
   const isRequester = currentUser?.id === po?.material_requests?.userid;
-  const showUploadBast = po?.status === "Pending BAST" && isRequester;
+  // Barang dianggap sudah diterima GA bila level MR sudah OPEN 5 atau CLOSE...
+  const goodsReceivedByGA =
+    po?.material_requests?.level === "OPEN 5" ||
+    !!po?.material_requests?.level?.startsWith("CLOSE");
+
+  // Requester baru boleh Upload BAST (menyelesaikan PO) SETELAH GA menerima
+  // barang di warehouse. Ini mencegah langkah penerimaan GA terlewati.
+  const showUploadBast =
+    po?.status === "Pending BAST" && isRequester && goodsReceivedByGA;
 
   // --- CEK ROLE PURCHASING (Untuk fitur edit status MR Item) ---
   const isPurchasing =
@@ -387,14 +410,53 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
     }
   };
 
-  const handleApprovalAction = async (decision: "approved" | "rejected") => {
+  const handleApprovalAction = async (
+    decision: "approved" | "rejected",
+    signature?: { image_url: string; printed_name: string },
+  ) => {
     if (!po || !currentUser || myApprovalIndex === -1) return;
 
+    // Payment Validator wajib melampirkan bukti pembayaran, kecuali mencentang
+    // opsi "belum tersedia".
+    if (
+      decision === "approved" &&
+      isPaymentValidatorTurn &&
+      !paymentSkip &&
+      !paymentProofFile
+    ) {
+      toast.error(
+        "Lampirkan bukti pembayaran, atau centang opsi bila belum tersedia.",
+      );
+      return;
+    }
+
     setActionLoading(true);
+
+    // Upload bukti pembayaran (jika ada) sebagai lampiran finance.
+    let attachmentsUpdate: typeof po.attachments | undefined;
+    if (decision === "approved" && isPaymentValidatorTurn && paymentProofFile) {
+      try {
+        const att = await uploadPoAttachment(
+          paymentProofFile,
+          po.kode_po,
+          "finance",
+        );
+        attachmentsUpdate = [...(po.attachments || []), att];
+      } catch (err: any) {
+        toast.warning("Gagal mengunggah bukti pembayaran", {
+          description: err.message,
+        });
+      }
+    }
 
     const updatedApprovals = JSON.parse(JSON.stringify(po.approvals));
     updatedApprovals[myApprovalIndex].status = decision;
     updatedApprovals[myApprovalIndex].processed_at = new Date().toISOString();
+    if (decision === "approved" && signature) {
+      updatedApprovals[myApprovalIndex].signature_url = signature.image_url;
+      updatedApprovals[myApprovalIndex].printed_name = signature.printed_name;
+      updatedApprovals[myApprovalIndex].signed_at = new Date().toISOString();
+    }
 
     let newPoStatus = po.status;
     let newMrStatus: string | null = null;
@@ -423,7 +485,11 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
 
     const { error: poError } = await supabase
       .from("purchase_orders")
-      .update({ approvals: updatedApprovals, status: newPoStatus })
+      .update({
+        approvals: updatedApprovals,
+        status: newPoStatus,
+        ...(attachmentsUpdate ? { attachments: attachmentsUpdate } : {}),
+      })
       .eq("id", po.id);
 
     if (poError) {
@@ -443,6 +509,17 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
           description: mrError.message,
         });
       }
+    }
+
+    // PO baru masuk Pending BAST → beri tahu GA bahwa ada barang yang perlu
+    // diterima (Goods Receipt).
+    if (newPoStatus === "Pending BAST") {
+      notifyGAOnGoodsReceiptNeeded({
+        actorId: currentUser.id,
+        companyCode: (po as any).company_code || "GMI",
+        kodePO: po.kode_po,
+        poId: po.id,
+      });
     }
 
     // Notify next approver (if any) or PO creator
@@ -559,34 +636,86 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
         </p>
       );
 
+    const approveBlocked =
+      isPaymentValidatorTurn && !paymentSkip && !paymentProofFile;
+
     return (
-      <div className="flex gap-2">
-        <Button
-          className="w-full"
-          onClick={() => handleApprovalAction("approved")}
-          disabled={actionLoading}
-        >
-          {actionLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Check className="mr-2 h-4 w-4" />
-          )}{" "}
-          Setujui PO
-        </Button>
-        <Button
-          variant="destructive"
-          className="w-full"
-          onClick={() => handleApprovalAction("rejected")}
-          disabled={actionLoading}
-        >
-          {actionLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <X className="mr-2 h-4 w-4" />
-          )}{" "}
-          Tolak PO
-        </Button>
-      </div>
+      <>
+        {isPaymentValidatorTurn && (
+          <div className="mb-3 space-y-2 rounded-md border bg-muted/30 p-3">
+            <Label htmlFor="payment-proof" className="text-sm font-medium">
+              Bukti Pembayaran <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="payment-proof"
+              type="file"
+              accept="image/*,application/pdf"
+              disabled={actionLoading || paymentSkip}
+              onChange={(e) =>
+                setPaymentProofFile(e.target.files?.[0] ?? null)
+              }
+            />
+            {paymentProofFile && (
+              <p className="text-xs text-muted-foreground truncate">
+                Terpilih: {paymentProofFile.name}
+              </p>
+            )}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={paymentSkip}
+                onChange={(e) => {
+                  setPaymentSkip(e.target.checked);
+                  if (e.target.checked) setPaymentProofFile(null);
+                }}
+                className="h-4 w-4 accent-primary"
+              />
+              Bukti pembayaran belum tersedia (akan dilampirkan kemudian)
+            </label>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Button
+            className="w-full"
+            onClick={() => {
+              if (approveBlocked) {
+                toast.error(
+                  "Lampirkan bukti pembayaran, atau centang opsi bila belum tersedia.",
+                );
+                return;
+              }
+              setSigOpen(true);
+            }}
+            disabled={actionLoading}
+          >
+            {actionLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="mr-2 h-4 w-4" />
+            )}{" "}
+            Setujui PO
+          </Button>
+          <Button
+            variant="destructive"
+            className="w-full"
+            onClick={() => handleApprovalAction("rejected")}
+            disabled={actionLoading}
+          >
+            {actionLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <X className="mr-2 h-4 w-4" />
+            )}{" "}
+            Tolak PO
+          </Button>
+        </div>
+        <SignatureSelector
+          open={sigOpen}
+          onOpenChange={setSigOpen}
+          onVerified={(result) => handleApprovalAction("approved", result)}
+        />
+      </>
     );
   };
 
@@ -712,14 +841,7 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
                   size="sm"
                   onClick={() => handlePrint("GMI")}
                 >
-                  <Printer className="mr-2 h-4 w-4" /> Cetak GMI
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePrint("GIS")}
-                >
-                  <Printer className="mr-2 h-4 w-4" /> Cetak GIS
+                  <Printer className="mr-2 h-4 w-4" /> Cetak
                 </Button>
                 {showGAReceiveButton && (
                   <Button
@@ -741,6 +863,13 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
                     <Upload className="mr-2 h-4 w-4" /> Upload BAST
                   </Button>
                 )}
+                {po?.status === "Pending BAST" &&
+                  isRequester &&
+                  !goodsReceivedByGA && (
+                    <span className="text-xs text-muted-foreground italic self-center">
+                      Menunggu GA menerima barang di warehouse sebelum Upload BAST.
+                    </span>
+                  )}
                 {canEditPO &&
                   po.status !== "Completed" &&
                   po.status !== "Rejected" && (
@@ -1146,6 +1275,19 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
                                 {formatDateWithTime(approver.processed_at)}
                               </p>
                             )}
+                          {approver.signature_url && (
+                            <div className="mt-2 flex items-center gap-2">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={approver.signature_url}
+                                alt="Tanda tangan"
+                                className="h-10 max-w-[120px] object-contain rounded border bg-white p-1"
+                              />
+                              <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                                Signed
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                         {getApprovalStatusBadge(
                           approver.status as
@@ -1170,7 +1312,7 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
                   poAttachments.map((file, index) => (
                     <li key={index}>
                       <Link
-                        href={`https://xdkjqwpvmyqcggpwghyi.supabase.co/storage/v1/object/public/mr/${file.url}`}
+                        href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/mr/${file.url}`}
                         target="_blank"
                         className="flex items-center gap-2 text-sm text-primary hover:underline"
                       >
@@ -1194,7 +1336,7 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
                   financeAttachments.map((file, index) => (
                     <li key={index}>
                       <Link
-                        href={`https://xdkjqwpvmyqcggpwghyi.supabase.co/storage/v1/object/public/mr/${file.url}`}
+                        href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/mr/${file.url}`}
                         target="_blank"
                         className="flex items-center gap-2 text-sm text-primary hover:underline"
                       >
@@ -1218,7 +1360,7 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
                   bastAttachments.map((file, index) => (
                     <li key={index}>
                       <Link
-                        href={`https://xdkjqwpvmyqcggpwghyi.supabase.co/storage/v1/object/public/mr/${file.url}`}
+                        href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/mr/${file.url}`}
                         target="_blank"
                         className="flex items-center gap-2 text-sm text-primary hover:underline"
                       >
@@ -1571,16 +1713,21 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
           </DialogContent>
         </Dialog>
 
-        <div className="print-only">
-          <PrintablePO
-            po={po}
-            companyInfo={
-              printCompany ? COMPANY_DETAILS[printCompany] : companyInfo
-            }
-            qrUrl={qrUrl}
-            vendorData={vendorData}
-          />
-        </div>
+        {/* Dokumen cetak di-portal ke <body> agar tidak terpengaruh offset
+            sidebar/layout dan bisa mengalir multi-halaman saat item banyak. */}
+        {printCompany &&
+          typeof document !== "undefined" &&
+          createPortal(
+            <div id="print-root">
+              <PrintablePO
+                po={po}
+                companyInfo={COMPANY_DETAILS[printCompany]}
+                qrUrl={qrUrl}
+                vendorData={vendorData}
+              />
+            </div>,
+            document.body,
+          )}
       </Content>
     </>
   );
