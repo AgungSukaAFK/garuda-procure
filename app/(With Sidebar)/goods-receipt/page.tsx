@@ -17,12 +17,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Loader2, PackageCheck, Eye } from "lucide-react";
+import { PackageCheck, Eye } from "lucide-react";
 import { formatCurrency, formatDateFriendly } from "@/lib/utils";
 import {
   fetchPendingGoodsReceiptPOs,
-  markGoodsAsReceivedByGA,
+  saveGoodsReceipt,
 } from "@/services/purchaseOrderService";
+import { ReceiptChecklistDialog } from "@/components/po/receipt-checklist-dialog";
+import { POItem, GoodsReceiptData } from "@/type";
 
 type GRPurchaseOrder = {
   id: number;
@@ -30,6 +32,7 @@ type GRPurchaseOrder = {
   total_price: number;
   created_at: string;
   mr_id: number | null;
+  items: POItem[];
   users_with_profiles: { nama: string } | null;
   material_requests: { kode_mr: string; level: string | null } | null;
 };
@@ -39,7 +42,9 @@ export default function GoodsReceiptPage() {
   const s = createClient();
   const [loading, setLoading] = useState(true);
   const [pos, setPos] = useState<GRPurchaseOrder[]>([]);
-  const [processingId, setProcessingId] = useState<number | null>(null);
+  const [me, setMe] = useState<{ id: string; nama: string } | null>(null);
+  const [grTarget, setGrTarget] = useState<GRPurchaseOrder | null>(null);
+  const [savingGR, setSavingGR] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -53,9 +58,10 @@ export default function GoodsReceiptPage() {
       }
       const { data: profile } = await s
         .from("profiles")
-        .select("role, department")
+        .select("role, department, nama")
         .eq("id", user.id)
         .single();
+      setMe({ id: user.id, nama: profile?.nama || "GA" });
 
       // Hanya GA (atau admin) yang boleh mengakses Goods Receipt.
       if (!isGADepartment(profile?.department) && profile?.role !== "admin") {
@@ -78,23 +84,29 @@ export default function GoodsReceiptPage() {
     load();
   }, []);
 
-  const handleReceive = async (po: GRPurchaseOrder) => {
-    if (!po.mr_id) return;
-    if (
-      !confirm(
-        `Konfirmasi barang untuk ${po.kode_po} sudah diterima di Warehouse? Status MR akan menjadi OPEN 5.`,
-      )
-    )
-      return;
-    setProcessingId(po.id);
+  const handleConfirmGR = async (payload: {
+    items: GoodsReceiptData["items"];
+    signature: { image_url: string; printed_name: string };
+  }) => {
+    if (!grTarget || !grTarget.mr_id || !me) return;
+    setSavingGR(true);
     try {
-      await markGoodsAsReceivedByGA(po.mr_id);
-      toast.success(`Barang ${po.kode_po} ditandai telah diterima di Warehouse.`);
-      setPos((prev) => prev.filter((p) => p.id !== po.id));
+      const data: GoodsReceiptData = {
+        items: payload.items,
+        received_by: me.id,
+        received_by_name: me.nama,
+        signature_url: payload.signature.image_url,
+        printed_name: payload.signature.printed_name,
+        received_at: new Date().toISOString(),
+      };
+      await saveGoodsReceipt(grTarget.id, grTarget.mr_id, data);
+      toast.success(`Goods Receipt ${grTarget.kode_po} tersimpan.`);
+      setPos((prev) => prev.filter((p) => p.id !== grTarget.id));
+      setGrTarget(null);
     } catch (e: any) {
-      toast.error("Gagal memproses penerimaan", { description: e.message });
+      toast.error("Gagal menyimpan Goods Receipt", { description: e.message });
     } finally {
-      setProcessingId(null);
+      setSavingGR(false);
     }
   };
 
@@ -144,14 +156,9 @@ export default function GoodsReceiptPage() {
                     <Button
                       size="sm"
                       className="bg-blue-600 hover:bg-blue-700"
-                      onClick={() => handleReceive(po)}
-                      disabled={processingId === po.id}
+                      onClick={() => setGrTarget(po)}
                     >
-                      {processingId === po.id ? (
-                        <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <PackageCheck className="mr-1 h-3.5 w-3.5" />
-                      )}
+                      <PackageCheck className="mr-1 h-3.5 w-3.5" />
                       Terima Barang
                     </Button>
                   </TableCell>
@@ -167,6 +174,17 @@ export default function GoodsReceiptPage() {
           </TableBody>
         </Table>
       </div>
+
+      <ReceiptChecklistDialog
+        open={!!grTarget}
+        onOpenChange={(o) => !o && setGrTarget(null)}
+        title={`Goods Receipt — ${grTarget?.kode_po ?? ""}`}
+        description="Checklist barang yang diterima di warehouse, lalu tanda tangani untuk menyimpan Goods Receipt."
+        items={grTarget?.items ?? []}
+        saving={savingGR}
+        confirmLabel="Tanda Tangani & Terima"
+        onConfirm={handleConfirmGR}
+      />
     </Content>
   );
 }

@@ -66,6 +66,10 @@ import {
   fetchActiveCostCenters,
   rebuildKodeMrForDepartment,
 } from "@/services/mrService";
+import {
+  deductCostCenterBudget,
+  refundCostCenterBudget,
+} from "@/services/costCenterService";
 import { logActivity } from "@/services/logService";
 import { dataDepartment } from "@/type/comboboxData";
 import {
@@ -285,21 +289,19 @@ function ValidateMRPageContent({ params }: { params: { id: string } }) {
       return;
     }
 
-    // Validasi Budget (Peringatan) — pakai angka mentah, bukan parse label.
+    // Validasi Budget — HARD BLOCK. Pakai angka mentah, bukan parse label.
     const budget = costCenterBudgets[selectedCostCenterId.toString()] ?? 0;
+    const deductAmount = Number(mr.cost_estimation) || 0;
 
-    if (Number(mr.cost_estimation) > budget) {
-      if (
-        !window.confirm(
-          `Peringatan: Estimasi biaya MR (${formatCurrency(
-            mr.cost_estimation,
-          )}) melebihi sisa budget Cost Center (${formatCurrency(
-            budget,
-          )}).\n\nApakah Anda yakin ingin tetap validasi?`,
-        )
-      ) {
-        return;
-      }
+    if (deductAmount > budget) {
+      toast.error("Budget Cost Center tidak mencukupi", {
+        description: `Estimasi biaya MR (${formatCurrency(
+          mr.cost_estimation,
+        )}) melebihi sisa budget Cost Center (${formatCurrency(
+          budget,
+        )}). Silakan top up budget terlebih dahulu atau pilih Cost Center lain.`,
+      });
+      return;
     }
 
     setActionLoading(true);
@@ -335,12 +337,47 @@ function ValidateMRPageContent({ params }: { params: { id: string } }) {
     if (newKodeMr) updatePayload.kode_mr = newKodeMr;
 
     try {
+      // 1) Potong budget Cost Center lebih dulu (transaksional & race-safe).
+      //    Jika saldo tidak cukup, RPC melempar 'INSUFFICIENT_BUDGET'.
+      try {
+        await deductCostCenterBudget(
+          selectedCostCenterId,
+          mrId,
+          deductAmount,
+          profile.id,
+          `Pemotongan budget validasi MR ${effectiveKodeMr}`,
+        );
+      } catch (deductErr: any) {
+        if (String(deductErr?.message).includes("INSUFFICIENT_BUDGET")) {
+          toast.error("Budget Cost Center tidak mencukupi", {
+            id: toastId,
+            description:
+              "Sisa budget Cost Center berubah dan kini tidak mencukupi. Silakan top up budget atau pilih Cost Center lain.",
+          });
+        } else {
+          toast.error("Gagal memotong budget Cost Center", {
+            id: toastId,
+            description: deductErr?.message,
+          });
+        }
+        setActionLoading(false);
+        return;
+      }
+
+      // 2) Update status MR. Bila gagal, kembalikan budget yang sudah dipotong.
       const { error: updateError } = await s
         .from("material_requests")
         .update(updatePayload)
         .eq("id", mrId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        await refundCostCenterBudget(
+          mrId,
+          profile.id,
+          `Pengembalian budget: validasi MR ${effectiveKodeMr} gagal`,
+        ).catch(() => {});
+        throw updateError;
+      }
 
       // Catat perubahan departemen ke activity log (terlihat di tab Logs mr-management/edit)
       if (departmentChanged) {
@@ -405,6 +442,16 @@ function ValidateMRPageContent({ params }: { params: { id: string } }) {
       .from("material_requests")
       .update({ status: "Rejected", discussions: updatedDiscussions })
       .eq("id", mrId);
+
+    if (!error) {
+      // Kembalikan budget bila MR ini sempat memotong budget (idempoten/no-op
+      // jika belum pernah dipotong, mis. ditolak sebelum divalidasi).
+      await refundCostCenterBudget(
+        mrId,
+        profile?.id || "system",
+        `Pengembalian budget: MR ${mr?.kode_mr ?? mrId} ditolak GA`,
+      ).catch(() => {});
+    }
 
     setActionLoading(false);
     if (error) {

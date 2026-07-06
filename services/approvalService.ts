@@ -232,5 +232,21 @@ export const processMrApproval = async (
 
   if (error) throw error;
 
+  // Jika MR ditolak, kembalikan budget Cost Center yang sempat dipotong saat
+  // validasi GA. Idempoten: no-op bila MR tidak punya potongan aktif.
+  if (decision === "rejected") {
+    const { error: refundError } = await supabase.rpc(
+      "refund_cost_center_budget",
+      {
+        p_mr_id: mrId,
+        p_user_id: userId,
+        p_description: "Pengembalian budget: MR ditolak saat approval",
+      },
+    );
+    if (refundError) {
+      console.error("Gagal mengembalikan budget Cost Center:", refundError);
+    }
+  }
+
   return { success: true, newStatus, newLevel };
 };

@@ -15,6 +15,33 @@ export interface Approval {
   signed_at?: string | null;
 }
 
+export interface ReceiptItem {
+  part_number: string;
+  name: string;
+  qty: number; // qty dipesan di PO
+  qty_received: number; // qty yang diterima
+  received: boolean; // dicentang sebagai diterima
+  note?: string;
+}
+
+export interface GoodsReceiptData {
+  items: ReceiptItem[];
+  received_by: string;
+  received_by_name: string;
+  signature_url: string;
+  printed_name: string;
+  received_at: string;
+}
+
+export interface BastData {
+  items: ReceiptItem[];
+  confirmed_by: string;
+  confirmed_by_name: string;
+  signature_url: string; // ttd requester
+  printed_name: string;
+  confirmed_at: string;
+}
+
 export interface UserSignature {
   id: string;
   user_id: string;
@@ -111,6 +138,8 @@ export interface MaterialRequest {
     name: string;
     current_budget: number;
   } | null;
+  budget_deducted_amount?: number;
+  budget_deducted_cc_id?: number | null;
 
   prioritas: "P0" | "P1" | "P2" | "P3" | "P4" | null;
   level: string;
@@ -291,6 +320,8 @@ export interface PurchaseOrderDetail extends Omit<
         users_with_profiles: { nama: string } | null;
       })
     | null;
+  goods_receipt?: GoodsReceiptData | null;
+  bast?: BastData | null;
 }
 
 export interface PurchaseOrder {

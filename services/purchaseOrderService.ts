@@ -10,6 +10,8 @@ import {
   PurchaseOrderPayload,
   PurchaseOrderListItem,
   Attachment,
+  GoodsReceiptData,
+  BastData,
 } from "@/type";
 import { normalizeMrOrders } from "./mrService";
 import { PAYMENT_VALIDATOR_USER_ID } from "@/type/enum";
@@ -550,7 +552,7 @@ export const fetchPendingGoodsReceiptPOs = async () => {
   const { data, error } = await supabase
     .from("purchase_orders")
     .select(
-      `id, kode_po, total_price, created_at, mr_id,
+      `id, kode_po, total_price, created_at, mr_id, items,
        users_with_profiles!user_id (nama),
        material_requests!mr_id (kode_mr, level)`,
     )
@@ -587,6 +589,39 @@ export const markGoodsAsReceivedByGA = async (mrId: number) => {
   }
 
   return data;
+};
+
+// Simpan Goods Receipt (GA): checklist + ttd GA, lalu set level MR -> OPEN 5.
+export const saveGoodsReceipt = async (
+  poId: number,
+  mrId: number,
+  data: GoodsReceiptData,
+) => {
+  const { error } = await supabase
+    .from("purchase_orders")
+    .update({ goods_receipt: data })
+    .eq("id", poId);
+  if (error) throw error;
+  await markGoodsAsReceivedByGA(mrId);
+};
+
+// Simpan BAST (Requester): checklist + ttd requester, lalu selesaikan PO + MR.
+export const saveBastAndComplete = async (
+  poId: number,
+  mrId: number | null,
+  data: BastData,
+) => {
+  const { error } = await supabase
+    .from("purchase_orders")
+    .update({ bast: data, status: "Completed" })
+    .eq("id", poId);
+  if (error) throw error;
+  if (mrId) {
+    await supabase
+      .from("material_requests")
+      .update({ status: "Completed", level: "CLOSE 3" })
+      .eq("id", mrId);
+  }
 };
 
 /**

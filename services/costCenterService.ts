@@ -211,6 +211,50 @@ export const setCostCenterActiveStatus = async (
 };
 
 /**
+ * Memotong budget Cost Center saat MR divalidasi GA.
+ * Memanggil RPC transaksional agar aman dari race condition & double-potong.
+ * Melempar error dengan pesan "INSUFFICIENT_BUDGET" bila saldo tidak cukup,
+ * sehingga pemanggil bisa menampilkan popup dan membatalkan validasi.
+ */
+export const deductCostCenterBudget = async (
+  costCenterId: number,
+  mrId: number,
+  amount: number,
+  userId: string,
+  description: string
+) => {
+  const { error } = await supabase.rpc("deduct_cost_center_budget", {
+    p_cost_center_id: costCenterId,
+    p_mr_id: mrId,
+    p_amount: amount,
+    p_user_id: userId,
+    p_description: description,
+  });
+
+  if (error) throw error;
+  return;
+};
+
+/**
+ * Mengembalikan budget Cost Center saat MR ditolak / dibatalkan.
+ * Idempoten: aman dipanggil walau MR belum pernah memotong budget (no-op).
+ */
+export const refundCostCenterBudget = async (
+  mrId: number,
+  userId: string,
+  description: string
+) => {
+  const { error } = await supabase.rpc("refund_cost_center_budget", {
+    p_mr_id: mrId,
+    p_user_id: userId,
+    p_description: description,
+  });
+
+  if (error) throw error;
+  return;
+};
+
+/**
  * (Opsional) Jika Anda membuat RPC 'admin_update_budget' seperti saran saya,
  * panggil RPC-nya seperti ini agar lebih aman dari race condition.
  */
