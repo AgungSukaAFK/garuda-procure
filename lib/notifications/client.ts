@@ -2,8 +2,7 @@
  * lib/notifications/client.ts
  *
  * Client-side notification utility.
- * Scalable: designed to support multiple channels (in-app, WhatsApp, email, etc.)
- * in the future. Currently handles in-app (Supabase DB) notifications.
+ * Handles in-app (Supabase DB) notifications.
  *
  * ADDING A NEW CHANNEL:
  *   1. Add the channel handler in `dispatchToChannels`

@@ -13,6 +13,7 @@ GarudaProcure adalah aplikasi web berbasis **Next.js App Router** dan **TypeScri
 - **Notifikasi internal**
 - **Pelacakan status pengadaan**
 - **Tanda tangan digital (Digital Signature Manager)** untuk approval, Goods Receipt, dan BAST
+- **Asisten AI (chatbot) dalam-aplikasi** untuk membantu navigasi & menelusuri progres MR/PO
 - **User management**
 
 Nama aplikasi yang digunakan di UI dan metadata adalah **Garuda Procure**, dengan deskripsi: _“Sistem Manajemen MR & PO - PT. Garuda Mart Indonesia”_.
@@ -65,15 +66,17 @@ Sistem menggunakan **Supabase** sebagai backend utama, meliputi:
 - Session berbasis cookies SSR
 
 ### 3.4 Library tambahan yang menunjukkan capability sistem
-- **nodemailer** → pengiriman email
-- **jspdf** dan **jspdf-autotable** → generasi PDF dokumen
 - **xlsx** → ekspor / impor Excel
 - **zustand** → state management client-side
 - **recharts** → dashboard chart / visualisasi
 - **@tiptap/react** dan extension terkait → rich text editor / mention / placeholder
 - **qrcode.react** → QR code
 - **react-day-picker** → pemilihan tanggal
-- **@webscopeio/react-textarea-autocomplete** → autocomplete textarea
+- **@google/genai** — **(baru)** SDK Google Gemini, provider default Asisten AI (lihat §6.15)
+- **@anthropic-ai/sdk** — **(baru)** SDK Claude/Anthropic, provider alternatif Asisten AI yang bisa diaktifkan lewat env `ASSISTANT_PROVIDER=claude`
+- **react-markdown** + **remark-gfm** — **(baru)** render jawaban Asisten AI (yang berformat Markdown) di widget chat
+
+> **Koreksi (per audit terbaru)**: revisi dokumen sebelumnya juga mencantumkan **nodemailer** (pengiriman email), **jspdf**/**jspdf-autotable** (generasi PDF), dan **@webscopeio/react-textarea-autocomplete** (autocomplete textarea) sebagai dependency sistem. Setelah dicek ke `package.json`, **ketiganya tidak pernah terpasang** dan tidak ada satu pun import-nya di kode — ini murni dokumentasi yang keliru/basi, bukan fitur yang pernah ada. Lihat juga §13 soal endpoint `send-email` yang ternyata juga tidak pernah ada.
 
 ---
 
@@ -121,7 +124,7 @@ Lapisan ini menangani:
 - middleware auth & route protection
 - RPC/function database
 - setup SQL tabel/fitur tertentu
-- endpoint API internal seperti send-email
+- endpoint API internal seperti Signature Manager dan Asisten AI (lihat §13)
 
 ### 4.4 Pola arsitektur yang tampak
 Sistem ini tidak memisahkan backend sebagai service terpisah, namun menggunakan pola:
@@ -156,7 +159,7 @@ Folder utama yang teridentifikasi:
 Subfolder penting yang ditemukan:
 
 - `app/(With Sidebar)` → area utama aplikasi setelah login
-- `app/api` → API route internal
+- `app/api` → API route internal (termasuk `app/api/v1/assistant` — **(baru)** endpoint Asisten AI, lihat §6.15)
 - `app/approval-po` → approval PO publik/dinamis tertentu
 - `app/auth` → autentikasi
 - `app/pending-approval` → halaman user belum lengkap/menunggu approval profil
@@ -221,6 +224,15 @@ Type utama:
 - `comboboxData.tsx`
 
 Folder ini penting karena memetakan model data sistem.
+
+### 5.6 Folder pendukung Asisten AI — baru
+Modul Asisten AI (§6.15) tersebar di beberapa folder di luar pola service-layer biasa:
+- `lib/assistant/provider.ts` — pemilih provider (Gemini/Claude) lewat env `ASSISTANT_PROVIDER`.
+- `lib/assistant/providers/gemini.ts` dan `lib/assistant/providers/claude.ts` — implementasi streaming + tool-calling per provider.
+- `lib/assistant/tools.ts` — definisi & eksekutor tool **read-only** (query Supabase) yang boleh dipanggil model.
+- `lib/assistant/knowledge.ts` — basis pengetahuan prosedur (system prompt) yang disuntikkan ke model.
+- `lib/zustand/assistantWidget.ts` — state posisi/ukuran widget chat, dipersist ke localStorage.
+- `components/assistant/assistant-widget.tsx` — komponen widget chat mengambang (floating action button + panel chat).
 
 ---
 
@@ -524,6 +536,45 @@ Komponen UI terkait: `components/signature/signature-selector.tsx` (memilih TTD 
 
 Modul ini menunjukkan sistem sudah bergerak melampaui approval "klik setuju" sederhana menuju **tanda tangan elektronik berlapis** (password akun + password signature terpisah + lockout), yang relevan dibahas untuk topik skripsi seputar keamanan dan non-repudiation pada sistem approval digital.
 
+### 6.15 Modul Asisten AI (chatbot dalam-aplikasi) — baru, penting
+Ini adalah modul yang **sama sekali belum tercatat pada revisi dokumen sebelumnya**, padahal merupakan salah satu fitur paling signifikan untuk dibahas di skripsi (integrasi LLM ke sistem informasi pengadaan). Wujudnya adalah **widget chat mengambang** ("Asisten GarudaProcure") yang muncul di seluruh halaman ber-sidebar, dipasang lewat `<AssistantWidget />` di `app/(With Sidebar)/layout.tsx`.
+
+#### 6.15.1 Arsitektur & alur permintaan
+1. **Widget (client)** — `components/assistant/assistant-widget.tsx`. Menu chat berupa panel mengambang yang bisa **di-drag**, **di-resize**, dan **di-dock ke salah satu dari 4 sudut layar** (kanan-bawah/kiri-bawah/kanan-atas/kiri-atas); posisi & ukuran dipersist ke localStorage lewat store zustand `lib/zustand/assistantWidget.ts`. Riwayat chat juga disimpan di localStorage (key `gp-assistant-chat`), **di-scope per `userId`** — bila user lain login di browser yang sama, riwayat lama tidak ikut tampil.
+2. **Endpoint** — `POST /api/v1/assistant` (`app/api/v1/assistant/route.ts`, `runtime = "nodejs"`, `maxDuration = 60`). **Wajib login** (dicek via `supabase.auth.getUser()`; 401 bila tidak ada sesi). Body berisi maksimal 20 pesan terakhir (`history`), pesan terakhir harus dari role `user`. Response berupa **stream teks biasa** (`Content-Type: text/plain`, bukan SSE/JSON) yang dibaca sedikit-demi-sedikit oleh widget lewat `ReadableStream`/`reader.read()` untuk efek mengetik real-time.
+3. **Pemilihan provider model** — `lib/assistant/provider.ts` memilih antara Gemini (default) dan Claude berdasarkan env `ASSISTANT_PROVIDER`. Kedua provider memakai **tool schema dan system prompt yang sama**, hanya berbeda cara memanggil API-nya:
+   - `lib/assistant/providers/gemini.ts` — pakai `@google/genai`, model default **`gemini-2.0-flash`** (bisa di-override via env `GEMINI_MODEL`; dipilih karena kuota free-tier hariannya lebih besar daripada `gemini-2.5-flash`). Butuh env `GEMINI_API_KEY` atau `GOOGLE_API_KEY`.
+   - `lib/assistant/providers/claude.ts` — pakai `@anthropic-ai/sdk`, model default **`claude-sonnet-4-6`** (env `CLAUDE_MODEL`). **Dipertahankan di kode tapi tidak aktif secara default** — komentar di kode menyebut ini "aktif lagi saat sudah langganan API Anthropic". Butuh env `ANTHROPIC_API_KEY`.
+   - Kedua provider membatasi maksimal **6 putaran tool-calling** (`MAX_TOOL_ROUNDS`) per request untuk mencegah loop tak berujung.
+4. **Penerjemah error ramah** — `friendlyAssistantError()` di route handler mengubah error mentah (rate limit/quota, API key salah, dll.) menjadi pesan berbahasa Indonesia yang sopan, bukan dump JSON teknis.
+
+> **Catatan lingkungan (gap ditemukan)**: env var `ASSISTANT_PROVIDER`, `GEMINI_API_KEY`/`GOOGLE_API_KEY`, `GEMINI_MODEL`, `ANTHROPIC_API_KEY`, dan `CLAUDE_MODEL` **belum tercantum di `.env.example`** meskipun sudah dipakai di kode — perlu ditambahkan agar setup proyek oleh developer baru tidak membingungkan (lihat juga §14 dan §18).
+
+#### 6.15.2 Tool-calling read-only (`lib/assistant/tools.ts`)
+Asisten **tidak diberi akses tulis sama sekali** — hanya 5 tool berbasis `SELECT` Supabase yang bisa dipanggil model:
+- `info_saya` — identitas user login (nama, role, department, company); dipakai saat user menyebut "saya"/"punya saya".
+- `cari_material_request` — cari 1 MR persis by `kode_mr`.
+- `list_material_request` — daftar MR dengan filter opsional `status` (partial match), `milik_saya` (boolean), `limit` (maks 25, default 10).
+- `cari_purchase_order` — cari 1 PO persis by `kode_po`, sekaligus melampirkan `kode_mr` asal bila ada.
+- `list_purchase_order` — daftar PO dengan filter serupa MR.
+
+Semua tool query lewat Supabase client bersesi user yang login (`ToolContext { supabase, userId }`) — bukan service-role, sehingga tunduk pada RLS yang berlaku. Nama pemilik dokumen di-resolve lewat satu query tambahan ke `profiles` (`resolveOwnerNames`) agar hasil tool lebih manusiawi (menampilkan nama, bukan UUID). Ada dua bentuk eksekutor karena format tool-result kedua provider berbeda: `runAssistantTool()` mengembalikan objek (dipakai Gemini) dan `executeAssistantTool()` membungkusnya jadi string JSON (dipakai Claude).
+
+#### 6.15.3 System prompt & basis pengetahuan (`lib/assistant/knowledge.ts`)
+System prompt (`SYSTEM_PROMPT`) menegaskan beberapa batasan penting yang layak dibahas dari sisi *AI safety/guardrail* di skripsi:
+- Asisten **hanya boleh menjawab seputar prosedur & data GarudaProcure** — pertanyaan di luar topik (umum, coding, berita, hal pribadi) harus ditolak sopan.
+- Asisten **boleh memandu navigasi** (menyebutkan menu & langkah konkret) tapi **tidak boleh menjalankan aksi apa pun** (tidak bisa membuat/mengubah/menghapus/menyetujui/membayar dokumen) — ditegaskan eksplisit agar model tidak menolak pertanyaan navigasi yang sah maupun mengklaim bisa melakukan aksi yang sebenarnya tidak bisa.
+- Dilarang membocorkan/menebak kredensial, password, API key, atau data teknis internal, dan dilarang mengarang data — bila tool mengembalikan kosong/error, harus disampaikan apa adanya.
+- Bagian `PROSEDUR` di dalam prompt adalah **ringkasan manual** dari alur MR/PO/Petty Cash, daftar status, format kode dokumen, dan **daftar menu navigasi sidebar** yang ditulis manual oleh developer — bukan diambil otomatis dari kode.
+
+> **Catatan analisis penting (temuan audit)**: bagian `PROSEDUR` di `knowledge.ts` **sudah tidak sinkron dengan navigasi aktual** (§7) karena ditulis manual dan tidak diperbarui mengikuti perubahan UI terbaru:
+> - Masih menyebut menu **"Stok GA"** untuk departemen GA/admin — padahal halaman ini **sudah dihapus** (§6.11). Asisten berpotensi memberi instruksi navigasi yang salah/menyesatkan untuk pertanyaan seputar stok GA.
+> - **Belum menyebut** menu-menu baru: **Goods Receipt** (`/goods-receipt`, GA/admin), **MR Saya** (`/my-mr`, requester), dan **Feedback Masuk** (`/feedback-management`, admin).
+> - Ini adalah contoh nyata risiko **maintainability pada sistem berbasis prompt/pengetahuan statis**: dokumentasi yang disuntikkan ke LLM bisa basi lebih cepat daripada kode itu sendiri karena tidak ada mekanisme sinkronisasi otomatis dari sidebar/routing ke `knowledge.ts`. Ini topik yang bagus untuk dibahas di bab evaluasi/kelemahan sistem pada skripsi (lihat §18).
+
+#### 6.15.4 Ringkasan nilai tambah fitur ini
+Modul ini menjadikan GarudaProcure bukan sekadar sistem informasi pengadaan konvensional, melainkan juga contoh penerapan **LLM ber-tool (agentic RAG ringan) dengan guardrail eksplisit** di atas data transaksional nyata — relevan untuk topik skripsi seperti "Implementasi Asisten AI Berbasis LLM untuk Membantu Navigasi dan Penelusuran Status pada Sistem Informasi Pengadaan", termasuk pembahasan keamanan (akses read-only, wajib login, batasan RLS), keandalan (fallback error, batas putaran tool-calling), dan keterbatasan (basis pengetahuan statis yang bisa basi).
+
 ---
 
 ## 7. Routing dan Navigasi Berdasarkan Role
@@ -811,21 +862,18 @@ Bucket Supabase Storage yang teridentifikasi:
 
 ## 13. API Internal
 Terdapat route API internal:
-- `app/api/v1/send-email/route.ts`
+- `app/api/v1/signatures/route.ts`, `.../verify/route.ts`, `.../[id]/route.ts`, `.../[id]/image/route.ts` — **(baru)** Signature Manager, lihat §6.14
+- `app/api/v1/assistant/route.ts` — **(baru)** endpoint chat Asisten AI (streaming, wajib login), lihat §6.15
 
-Keberadaan endpoint ini, ditambah dependency `nodemailer`, `SMTP_*`, dan `SES_FROM`, menunjukkan sistem mendukung **pengiriman email** untuk kebutuhan notifikasi atau dokumen.
+Selain itu ada folder `lib/notifications` untuk orkestrasi notifikasi in-app.
 
-Selain itu ada folder:
-- `lib/amazon_ses`
-- `lib/fonnte`
-- `lib/notifications`
-
-Dari nama folder dapat diinferensikan bahwa sistem berpotensi mendukung:
-- email via SMTP / Amazon SES
-- notifikasi WhatsApp / messaging via Fonnte
-- orkestrasi notifikasi multi-channel
-
-Namun untuk penelitian, bagian ini sebaiknya ditulis sebagai **indikasi integrasi**, kecuali sudah diverifikasi lebih dalam isi filenya.
+> **Koreksi (per audit terbaru)**: revisi dokumen sebelumnya sempat menyebut endpoint `app/api/v1/send-email/route.ts`, folder `lib/amazon_ses`, dan folder `lib/fonnte` sebagai indikasi sistem mendukung pengiriman email (SES) dan notifikasi WhatsApp (Fonnte). Setelah dicek langsung ke kode, **ketiganya tidak pernah ada** — tidak ada route `send-email`, tidak ada dependency `nodemailer` di `package.json`, dan kedua folder tersebut tidak pernah dibuat. Ini adalah dokumentasi rencana yang tidak pernah diimplementasikan (lihat juga `outline/06-env-integrations.md` yang sebelumnya memuat klaim serupa, sudah diperbaiki).
+>
+> **Kesimpulan aktual soal email**: sistem ini **tidak mengirim email dari kode aplikasinya sendiri**. Env var `SMTP_PORT`, `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SES_FROM` sudah dihapus dari `.env.example` karena tidak pernah dipakai.
+>
+> **Koreksi penting (temuan audit lanjutan)**: alur "lupa password" **bukan** ditangani lewat email Supabase seperti anggapan awal. Tidak ada satu pun pemanggilan `supabase.auth.resetPasswordForEmail()` di kode. Halaman login (`app/auth/login/page.tsx`) hanya menampilkan teks statis "Lupa password? Hubungi admin untuk reset." — tidak ada form/link self-service. Reset password yang benar-benar aktif adalah **admin-manual**: endpoint `app/api/v1/admin/reset-password/route.ts` memakai Supabase *service-role* admin API (`admin.auth.admin.updateUserById`) untuk langsung mengganti password user (otorisasi berlapis: harus admin, harus company sama kecuali LOURDES), **tanpa mengirim email apa pun** — UI-nya di `app/(With Sidebar)/user-management/[userid]/page.tsx`. Komentar di kode bahkan eksplisit menyebut endpoint ini "menggantikan alur forgot password via email". Jadi kebutuhan email aplikasi yang benar-benar aktif hanyalah **login Google OAuth** (tidak butuh pengiriman email kustom) — bukan password recovery.
+>
+> Sistem ini juga **tidak memiliki fitur notifikasi WhatsApp** dalam bentuk apa pun; env var `NEXT_PUBLIC_FONNTE_TOKEN` yang sebelumnya ada di `.env.example` sudah dihapus karena tidak pernah dipakai di kode manapun. Satu-satunya field bernama "whatsapp" di sistem adalah kolom kontak pada form **Feedback** (`type/index.ts`, `services/feedbackService.ts`, halaman `feedback`/`feedback-management`) — itu murni nomor kontak yang diisi manual oleh pengguna agar admin bisa menghubungi balik, **bukan** kanal pengiriman notifikasi otomatis.
 
 ---
 
@@ -834,23 +882,23 @@ Berdasarkan `.env.example`, sistem memerlukan:
 
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_OR_ANON_KEY`
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `SMTP_PORT`
-- `SMTP_HOST`
 - `NEXT_PUBLIC_DEVELOPER_EMAIL`
-- `NEXT_PUBLIC_FONNTE_TOKEN`
 - `APP_NAME`
-- `SES_FROM`
-- `SMTP_PASS`
-- `SMTP_USER`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_URL`
 
+Selain daftar di atas, kode sudah membaca env berikut untuk **Asisten AI** (§6.15) — **namun belum ditambahkan ke `.env.example`**, ini gap dokumentasi setup proyek yang perlu diperbaiki:
+- `ASSISTANT_PROVIDER` — `"gemini"` (default) atau `"claude"`.
+- `GEMINI_API_KEY` (atau fallback `GOOGLE_API_KEY`) — wajib bila provider Gemini aktif.
+- `GEMINI_MODEL` — override model Gemini (default `gemini-2.0-flash`).
+- `ANTHROPIC_API_KEY` — wajib bila `ASSISTANT_PROVIDER=claude`.
+- `CLAUDE_MODEL` — override model Claude (default `claude-sonnet-4-6`).
+
 ### 14.1 Klasifikasi fungsi environment
-- **Supabase client/server**: URL dan key
-- **SMTP / SES**: email sending
-- **Fonnte**: kemungkinan integrasi WhatsApp API
+- **Supabase client/server**: URL dan key (termasuk Auth — login Google OAuth; reset password TIDAK lewat email Supabase, lihat catatan §13)
 - **APP_NAME**: identitas aplikasi
 - **developer email**: kemungkinan fallback / monitoring
+- **Asisten AI**: pemilihan & konfigurasi provider LLM (Gemini/Claude)
 
 ---
 
@@ -918,6 +966,8 @@ Beberapa kekuatan yang terlihat dari repository ini:
 8. **TypeScript types cukup kaya**, sehingga domain model terdokumentasi baik di kode.
 9. **Penomoran dokumen otomatis** relevan untuk kebutuhan administrasi perusahaan.
 10. **Ada pemisahan service layer**, yang memudahkan analisis arsitektur untuk penelitian.
+11. **Asisten AI ber-tool dengan guardrail eksplisit** (§6.15) — akses read-only, wajib login, batas putaran tool-calling, dan penanganan error yang ramah, menunjukkan pertimbangan keamanan yang matang saat mengintegrasikan LLM ke data transaksional.
+12. **Tanda tangan elektronik berlapis** (§6.14) — password akun + password signature terpisah + lockout otomatis, relevan untuk pembahasan non-repudiation pada approval digital.
 
 ---
 
@@ -947,6 +997,13 @@ Untuk pembelajaran model lain atau pembahasan skripsi, beberapa catatan penting:
    - Jalur **BAST digital** (`saveBastAndComplete`, `BastData`, kolom `purchase_orders.bast`) sudah dibangun di service layer tetapi **belum disambungkan ke UI manapun**; jalur BAST yang aktif masih upload-file lama (`closePoWithBast`). Ini contoh baik untuk dibahas di skripsi sebagai risiko *incomplete feature migration* pada pengembangan iteratif.
    - Halaman `goods-receipt` sempat mengalami kondisi serupa (import komponen dialog baru ditambahkan, tetapi JSX lama yang memanggil handler yang sudah dihapus belum dibereskan, menyebabkan error TypeScript) sebelum diperbaiki — bukti nyata bahwa migrasi fitur di repo ini kadang dilakukan bertahap dan sempat meninggalkan state tidak konsisten di working tree.
 
+7. **Basis pengetahuan Asisten AI berpotensi basi (stale)**
+   - `lib/assistant/knowledge.ts` (§6.15.3) berisi ringkasan navigasi/prosedur yang ditulis manual, dan **sudah tidak sinkron** dengan menu aktual: masih menyebut "Stok GA" yang sudah dihapus, dan belum menyebut menu baru seperti "Goods Receipt", "MR Saya", "Feedback Masuk".
+   - Ini relevan dibahas sebagai risiko *prompt/knowledge drift* — dokumentasi yang disuntikkan ke LLM tidak otomatis mengikuti perubahan kode, sehingga perlu proses maintenance tersendiri.
+
+8. **`.env.example` tidak lengkap**
+   - Variabel untuk Asisten AI (`ASSISTANT_PROVIDER`, `GEMINI_API_KEY`, dll. — lihat §14) belum dicantumkan, padahal sudah dipakai di kode produksi.
+
 Catatan ini bukan berarti sistem buruk, tetapi justru berguna untuk analisis akademik — terutama untuk pembahasan seputar *technical debt* dan *maintainability* pada pengembangan sistem informasi secara iteratif.
 
 ---
@@ -973,6 +1030,8 @@ Contoh topik skripsi yang relevan:
 6. **Implementasi Supabase sebagai Backend-as-a-Service pada Sistem Informasi Pengadaan**
 7. **Analisis Pelacakan Status Pengadaan Menggunakan Model Workflow Bertingkat**
 8. **Pengembangan Sistem Petty Cash Terintegrasi dengan Approval Multi-Level**
+9. **Implementasi Asisten AI Berbasis LLM (Gemini/Claude) dengan Tool-Calling Read-Only untuk Navigasi dan Penelusuran Status pada Sistem Pengadaan** — lihat §6.15
+10. **Analisis Keamanan Tanda Tangan Elektronik Berlapis pada Alur Approval Digital** — lihat §6.14
 
 ### 19.3 Komponen akademik yang mudah diturunkan dari sistem ini
 - Identifikasi masalah manual procurement
@@ -1038,19 +1097,28 @@ Lihat:
 - `lib/supabase/client.ts`
 - `lib/supabase/server.ts`
 - folder `supabase/migrations/*.sql` (urut berdasarkan timestamp nama file — ini riwayat perubahan skema paling akurat, lebih dipercaya daripada dokumen ini bila ada perbedaan)
-- route `app/api/v1/send-email/route.ts` dan `app/api/v1/signatures/*`
+- route `app/api/v1/signatures/*`
+
+### Tahap 7 — Pahami Asisten AI (fitur baru, §6.15)
+Lihat urut:
+- `lib/assistant/knowledge.ts` (system prompt & batasan)
+- `lib/assistant/tools.ts` (tool read-only yang tersedia)
+- `lib/assistant/provider.ts` beserta `providers/gemini.ts` / `providers/claude.ts`
+- `app/api/v1/assistant/route.ts` (endpoint streaming)
+- `components/assistant/assistant-widget.tsx` (UI chat)
 
 ---
 
 ## 21. Kesimpulan
-GarudaProcure adalah **sistem informasi pengadaan internal berbasis web** yang dibangun dengan **Next.js + TypeScript + Supabase**, dan dirancang untuk mendigitalisasi proses operasional **Material Request, Purchase Order, approval, petty cash, notifikasi, serta kontrol cost center**.
+GarudaProcure adalah **sistem informasi pengadaan internal berbasis web** yang dibangun dengan **Next.js + TypeScript + Supabase**, dan dirancang untuk mendigitalisasi proses operasional **Material Request, Purchase Order, approval, petty cash, notifikasi, kontrol cost center, tanda tangan digital, serta asisten AI dalam-aplikasi**.
 
 Sistem ini memiliki karakteristik penting:
 - modular
 - berbasis role dan department
-- memiliki workflow approval multi-level
+- memiliki workflow approval multi-level dengan tanda tangan elektronik berlapis
 - mendukung tracking status yang detail
 - mendukung attachment dan notifikasi
+- dilengkapi asisten AI ber-tool (read-only) untuk navigasi & penelusuran progres dokumen
 - relevan untuk konteks enterprise internal
 
 Untuk konteks skripsi, sistem ini sangat kaya karena dapat dianalisis dari sisi:
@@ -1060,5 +1128,6 @@ Untuk konteks skripsi, sistem ini sangat kaya karena dapat dianalisis dari sisi:
 - kontrol akses
 - workflow approval
 - efektivitas digitalisasi pengadaan
+- integrasi LLM/AI pada sistem informasi transaksional
 
 Dengan kata lain, repository ini bukan sekadar template web biasa, tetapi sudah membentuk **sistem informasi operasional perusahaan** yang cukup matang untuk dijadikan objek studi, dokumentasi teknis, maupun dasar analisis akademik.

@@ -352,9 +352,9 @@ export const fetchMaterialRequestById = async (mrId: number) => {
     .from("material_requests")
     .select(
       `
-      *, 
+      *,
       users_with_profiles!userid(nama, lokasi),
-      cost_centers (
+      cost_centers!cost_center_id (
         id,
         name,
         code,
@@ -445,7 +445,7 @@ export const fetchMaterialRequests = async (
   let query = supabase
     .from("material_requests")
     .select(
-      `*, users_with_profiles:profiles!fk_material_requests_profiles (nama, email), cost_centers (name, code)`,
+      `*, users_with_profiles:profiles!fk_material_requests_profiles (nama, email), cost_centers!cost_center_id (name, code)`,
       { count: "exact" },
     );
 

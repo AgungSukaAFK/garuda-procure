@@ -249,7 +249,7 @@ function MaterialRequestContent() {
             id, kode_mr, kategori, status, department, created_at, due_date, 
             tujuan_site, prioritas, level, cost_estimation, remarks, company_code, orders,
             users_with_profiles!userid (nama),
-            cost_centers (code)
+            cost_centers!cost_center_id (code)
           `,
           { count: "exact" },
         );
@@ -423,7 +423,7 @@ function MaterialRequestContent() {
           tujuan_site, company_code, created_at, due_date,
           prioritas, level, orders, approvals,
           users_with_profiles!userid (nama),
-          cost_centers (code)
+          cost_centers!cost_center_id (code)
       `);
 
       // FILTER PENCARIAN (Sama persis dengan tabel)

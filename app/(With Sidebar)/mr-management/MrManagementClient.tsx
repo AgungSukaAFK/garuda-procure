@@ -244,7 +244,7 @@ export default function MrManagementClient() {
             id, kode_mr, kategori, status, department, created_at, due_date, 
             tujuan_site, prioritas, level, cost_estimation, remarks, company_code, orders,
             users_with_profiles!userid (nama),
-            cost_centers (code)
+            cost_centers!cost_center_id (code)
           `,
           { count: "exact" },
         );
@@ -409,7 +409,7 @@ export default function MrManagementClient() {
             tujuan_site, company_code, created_at, due_date,
             prioritas, level, orders, 
             users_with_profiles!userid (nama),
-            cost_centers (code)
+            cost_centers!cost_center_id (code)
         `);
 
       // Re-apply same filters as fetch logic...

@@ -467,7 +467,7 @@ function PurchaseOrderPageContent() {
             material_requests!mr_id (
               kode_mr,
               department,
-              cost_centers (name),
+              cost_centers!cost_center_id (name),
               users_with_profiles!userid (nama)
             )
           `,

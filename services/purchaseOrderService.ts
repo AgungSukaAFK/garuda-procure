@@ -201,9 +201,9 @@ export const fetchMaterialRequestById = async (mrId: number) => {
     .from("material_requests")
     .select(
       `
-      *, 
+      *,
       users_with_profiles!userid(nama),
-      cost_centers (
+      cost_centers!cost_center_id (
         id,
         name,
         code,
