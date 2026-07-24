@@ -181,6 +181,14 @@
   display: none;
 }
 
+/* Dokumen cetak di-portal ke <body> (lihat #print-root di bawah) sehingga
+   lepas dari layout sidebar. Tanpa aturan ini ia tampil sebagai blok biasa
+   di paling bawah halaman selama window.print() belum/batal terpanggil --
+   sembunyikan secara default, baru ditampilkan lewat @media print. */
+#print-root {
+  display: none;
+}
+
 @media print {
   /* Dokumen cetak (#print-root) di-portal sebagai anak langsung <body>.
      Sembunyikan SEMUA anak <body> lain (app, sidebar, dialog, widget) dengan

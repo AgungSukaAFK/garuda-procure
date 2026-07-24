@@ -32,6 +32,18 @@ export interface LatestMR {
   } | null;
 }
 
+export interface MRListItem {
+  id: number;
+  kode_mr: string;
+  status: string;
+  department: string | null;
+  cost_estimation: number | null;
+  created_at: string;
+  users_with_profiles: {
+    nama: string;
+  } | null;
+}
+
 const supabase = createClient();
 
 /**
@@ -246,4 +258,54 @@ export const fetchLatestMRs = async (
       ? mr.users_with_profiles[0] ?? null
       : mr.users_with_profiles,
   })) as LatestMR[];
+};
+
+/**
+ * Mengambil daftar MR berdasarkan status (dan rentang tanggal), dipakai
+ * untuk mengisi tabel detail pada modal kartu statistik dashboard.
+ */
+export const fetchMRsByStatus = async (
+  companyCode: string,
+  statusFilter: string[] | string,
+  startDate: string,
+  endDate: string
+): Promise<MRListItem[]> => {
+  let query = supabase.from("material_requests").select(
+    `
+      id,
+      kode_mr,
+      status,
+      department,
+      cost_estimation,
+      created_at,
+      users_with_profiles!userid ( nama )
+    `
+  );
+
+  if (companyCode !== "LOURDES") {
+    query = query.eq("company_code", companyCode);
+  }
+
+  query = Array.isArray(statusFilter)
+    ? query.in("status", statusFilter)
+    : query.eq("status", statusFilter);
+
+  query = query
+    .gte("created_at", startDate)
+    .lte("created_at", endDate)
+    .order("created_at", { ascending: false });
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Error fetching MRs by status:", error);
+    throw error;
+  }
+
+  return (data || []).map((mr) => ({
+    ...mr,
+    users_with_profiles: Array.isArray(mr.users_with_profiles)
+      ? mr.users_with_profiles[0] ?? null
+      : mr.users_with_profiles,
+  })) as MRListItem[];
 };

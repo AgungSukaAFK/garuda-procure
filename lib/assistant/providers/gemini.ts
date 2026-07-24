@@ -15,9 +15,11 @@ import { SYSTEM_PROMPT } from "../knowledge";
 import { assistantTools, runAssistantTool, type ToolContext } from "../tools";
 import type { AssistantStreamArgs } from "../provider";
 
-// gemini-2.0-flash punya kuota harian free tier lebih besar daripada 2.5-flash
-// (yang hanya ~20 request/hari). Bisa di-override via env GEMINI_MODEL.
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+// gemini-2.0-flash & gemini-2.5-flash-lite sudah tidak tersedia untuk project
+// baru (retired / "no longer available to new users"). Pakai alias
+// "-latest" supaya otomatis ikut model lite terbaru tanpa perlu update kode
+// lagi tiap kali Google retire versi lama. Bisa di-override via env GEMINI_MODEL.
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
 const MAX_TOOL_ROUNDS = 6;
 
 // ---- Konversi schema tool (JSON Schema) → schema Gemini ----
@@ -94,8 +96,15 @@ export async function runGeminiStream({ history, ctx, send }: AssistantStreamArg
     });
 
     const calls: { name: string; args: Record<string, unknown> }[] = [];
+    // Simpan parts mentah (termasuk thoughtSignature) — model-model terbaru
+    // (mis. gemini-3.x) mewajibkan thought_signature dikirim balik persis di
+    // functionCall part saat multi-turn tool use, kalau tidak API menolak
+    // dengan 400 "missing a thought_signature".
+    const modelParts: NonNullable<Content["parts"]> = [];
     for await (const chunk of stream) {
       if (chunk.text) send(chunk.text);
+      const parts = chunk.candidates?.[0]?.content?.parts;
+      if (parts) modelParts.push(...parts);
       for (const fc of chunk.functionCalls ?? []) {
         if (fc.name) calls.push({ name: fc.name, args: (fc.args ?? {}) as Record<string, unknown> });
       }
@@ -103,11 +112,9 @@ export async function runGeminiStream({ history, ctx, send }: AssistantStreamArg
 
     if (calls.length === 0) break; // jawaban akhir sudah selesai
 
-    // Catat giliran model (function call) + balas dengan hasil tool.
-    contents.push({
-      role: "model",
-      parts: calls.map((c) => ({ functionCall: { name: c.name, args: c.args } })),
-    });
+    // Catat giliran model (function call, dengan thoughtSignature apa adanya)
+    // + balas dengan hasil tool.
+    contents.push({ role: "model", parts: modelParts });
     const parts = [];
     for (const c of calls) {
       const result = await runAssistantTool(c.name, c.args, toolCtx);

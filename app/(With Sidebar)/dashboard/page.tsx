@@ -31,10 +31,12 @@ import {
   fetchMonthlyMrTrend,
   fetchDepartmentMrDistribution,
   fetchLatestMRs,
+  fetchMRsByStatus,
   getActiveUserProfile,
   DashboardStats,
   ChartData, // Asumsi ChartData adalah { name: string, total: number } atau { name: string, mr: number, po: number }
   LatestMR,
+  MRListItem,
 } from "@/services/dashboardService";
 import { Profile } from "@/type";
 import { toast } from "sonner";
@@ -57,6 +59,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 
@@ -143,6 +152,11 @@ export default function Dashboard() {
   const [latestMRs, setLatestMRs] = useState<LatestMR[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Modal detail untuk kartu "MR Selesai"
+  const [completedMRs, setCompletedMRs] = useState<MRListItem[]>([]);
+  const [completedMRsLoading, setCompletedMRsLoading] = useState(false);
+  const [completedMRsOpen, setCompletedMRsOpen] = useState(false);
+
   // Default ke 30 hari terakhir
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
@@ -191,20 +205,45 @@ export default function Dashboard() {
     loadDashboard();
   }, [dateRange]); // Muat ulang jika date range berubah
 
+  const handleOpenCompletedMRs = async () => {
+    if (!profile?.company) return;
+    setCompletedMRsOpen(true);
+    setCompletedMRsLoading(true);
+    try {
+      const startDate = (dateRange?.from || new Date(0)).toISOString();
+      const endDate = (dateRange?.to || new Date()).toISOString();
+      const data = await fetchMRsByStatus(
+        profile.company,
+        "Completed",
+        startDate,
+        endDate
+      );
+      setCompletedMRs(data);
+    } catch (error: any) {
+      toast.error("Gagal memuat detail MR Selesai", {
+        description: error.message,
+      });
+    } finally {
+      setCompletedMRsLoading(false);
+    }
+  };
+
   const StatCard = ({
     title,
     value,
     description,
     icon: Icon,
     colorClass,
+    onClick,
   }: {
     title: string;
     value: string | number | undefined;
     description: string;
     icon: React.ElementType;
     colorClass?: string;
+    onClick?: () => void;
   }) => (
-    <Content size="xs" className="flex flex-col">
+    <Content size="xs" className="flex flex-col" onClick={onClick}>
       <div className="flex justify-between items-center mb-2">
         <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
         <Icon
@@ -277,50 +316,53 @@ export default function Dashboard() {
       </div>
 
       {/* --- Kartu Statistik --- */}
-      <div className="col-span-12 grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-        <StatCard
-          title="MR Open"
-          value={stats?.mr_open}
-          icon={FileClock}
-          description="Pending Validation/Approval"
-          colorClass="text-yellow-500"
-        />
-        <StatCard
-          title="MR Menunggu PO"
-          value={stats?.mr_waiting_po}
-          icon={FileSpreadsheet}
-          description="Status Waiting PO"
-          colorClass="text-blue-500"
-        />
-        <StatCard
-          title="MR Selesai"
-          value={stats?.mr_closed}
-          icon={FileCheck}
-          description="Status Completed"
-          colorClass="text-green-500"
-        />
-        <StatCard
-          title="PO Open"
-          value={stats?.po_pending}
-          icon={Package}
-          description="Pending Validation/Approval/BAST"
-          colorClass="text-cyan-500"
-        />
-        <StatCard
-          title="PO Selesai"
-          value={stats?.po_completed}
-          icon={CheckCheck}
-          description="Status Completed"
-          colorClass="text-green-500"
-        />
-        <StatCard
-          title="MR Ditolak"
-          value={stats?.mr_rejected}
-          icon={FileX}
-          description="Status Rejected"
-          colorClass="text-destructive"
-        />
-      </div>
+      {/* Setiap StatCard membawa col-span responsifnya sendiri (lihat size="xs"
+          di Content: col-span-12 -> sm:6 -> lg:4 -> xl:3), jadi ditaruh langsung
+          sebagai child grid 12-kolom dari layout, BUKAN dibungkus grid baru --
+          supaya di layar xl bisa pas 4 kartu per baris (12 / 3 = 4). */}
+      <StatCard
+        title="MR Open"
+        value={stats?.mr_open}
+        icon={FileClock}
+        description="Pending Validation/Approval"
+        colorClass="text-yellow-500"
+      />
+      <StatCard
+        title="MR Menunggu PO"
+        value={stats?.mr_waiting_po}
+        icon={FileSpreadsheet}
+        description="Status Waiting PO"
+        colorClass="text-blue-500"
+      />
+      <StatCard
+        title="MR Selesai"
+        value={stats?.mr_closed}
+        icon={FileCheck}
+        description="Status Completed"
+        colorClass="text-green-500"
+        onClick={handleOpenCompletedMRs}
+      />
+      <StatCard
+        title="PO Open"
+        value={stats?.po_pending}
+        icon={Package}
+        description="Pending Validation/Approval/BAST"
+        colorClass="text-cyan-500"
+      />
+      <StatCard
+        title="PO Selesai"
+        value={stats?.po_completed}
+        icon={CheckCheck}
+        description="Status Completed"
+        colorClass="text-green-500"
+      />
+      <StatCard
+        title="MR Ditolak"
+        value={stats?.mr_rejected}
+        icon={FileX}
+        description="Status Rejected"
+        colorClass="text-destructive"
+      />
 
       <Content
         size="md"
@@ -462,6 +504,71 @@ export default function Dashboard() {
           </Table>
         </div>
       </Content>
+
+      {/* Modal detail untuk kartu "MR Selesai" */}
+      <Dialog open={completedMRsOpen} onOpenChange={setCompletedMRsOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Material Request Selesai</DialogTitle>
+            <DialogDescription>
+              Daftar MR berstatus Completed pada rentang tanggal terpilih
+              {profile?.company ? ` untuk ${profile.company}` : ""}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Kode MR</TableHead>
+                  <TableHead>Departemen</TableHead>
+                  <TableHead>PIC</TableHead>
+                  <TableHead>Estimasi Biaya</TableHead>
+                  <TableHead>Tanggal Dibuat</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {completedMRsLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell colSpan={6}>
+                        <Skeleton className="h-8 w-full" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : completedMRs.length > 0 ? (
+                  completedMRs.map((mr) => (
+                    <TableRow key={mr.id}>
+                      <TableCell className="font-medium">
+                        {mr.kode_mr}
+                      </TableCell>
+                      <TableCell>{mr.department || "N/A"}</TableCell>
+                      <TableCell>
+                        {mr.users_with_profiles?.nama || "N/A"}
+                      </TableCell>
+                      <TableCell>
+                        {formatCurrency(mr.cost_estimation ?? 0)}
+                      </TableCell>
+                      <TableCell>{formatDateFriendly(mr.created_at)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={`/material-request/${mr.id}`}>View</Link>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center h-24">
+                      Tidak ada MR selesai pada rentang tanggal ini.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

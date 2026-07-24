@@ -18,6 +18,7 @@ type Props = {
   children?: React.ReactNode;
   cardFooter?: React.ReactNode;
   id?: string;
+  onClick?: () => void;
 };
 
 const colSpanMap: Record<NonNullable<Props["size"]>, string> = {
@@ -45,11 +46,33 @@ export function Content({
   description,
   cardFooter,
   id,
+  onClick,
 }: Props) {
   const colClass = colSpanMap[size] ?? "";
 
   return (
-    <Card id={id} className={cn("col-span-12", colClass, className)}>
+    <Card
+      id={id}
+      className={cn(
+        "col-span-12",
+        colClass,
+        onClick && "cursor-pointer transition-shadow hover:shadow-md",
+        className
+      )}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+    >
       {(title || description || cardAction) && (
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>

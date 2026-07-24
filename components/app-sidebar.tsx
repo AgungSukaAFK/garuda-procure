@@ -290,13 +290,22 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div>
+        <div className="flex items-center justify-center py-2">
+          {/* Expanded: logo landscape. Collapsed (icon-only): logo persegi GMI. */}
           <Image
-            src="/lourdes-logo.webp"
-            alt="Lourdes Autoparts"
-            width={500}
-            height={300}
-            style={{ width: "100%", height: "auto" }}
+            src="/logo-gmi-lanscape.webp"
+            alt="Garuda Procure"
+            width={1920}
+            height={231}
+            className="h-8 w-auto max-w-full group-data-[collapsible=icon]:hidden dark:brightness-0 dark:invert"
+            priority
+          />
+          <Image
+            src="/gmi-logo.webp"
+            alt="Garuda Procure"
+            width={150}
+            height={150}
+            className="hidden h-8 w-8 shrink-0 rounded-md object-contain group-data-[collapsible=icon]:block dark:brightness-0 dark:invert"
             priority
           />
         </div>
