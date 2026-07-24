@@ -57,15 +57,13 @@ export async function POST(request: Request) {
   const ok = await bcrypt.compare(password, sig.password_hash);
 
   if (!ok) {
-    const attempts = (profile?.signature_failed_attempts ?? 0) + 1;
-    const locked = attempts >= MAX_ATTEMPTS;
-    await supabase
-      .from("profiles")
-      .update({
-        signature_failed_attempts: attempts,
-        ...(locked ? { is_active: false } : {}),
-      })
-      .eq("id", user.id);
+    const { data: attemptResult } = await supabase.rpc(
+      "record_signature_attempt",
+      { p_success: false },
+    );
+    const row = attemptResult?.[0];
+    const attempts = row?.attempts ?? (profile?.signature_failed_attempts ?? 0) + 1;
+    const locked = row?.locked ?? attempts >= MAX_ATTEMPTS;
     return NextResponse.json(
       {
         error: locked
@@ -79,10 +77,7 @@ export async function POST(request: Request) {
 
   // Sukses: reset counter bila perlu.
   if ((profile?.signature_failed_attempts ?? 0) > 0) {
-    await supabase
-      .from("profiles")
-      .update({ signature_failed_attempts: 0 })
-      .eq("id", user.id);
+    await supabase.rpc("record_signature_attempt", { p_success: true });
   }
 
   return NextResponse.json({

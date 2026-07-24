@@ -280,7 +280,12 @@ function DetailPOPageContent({ params }: { params: { id: string } }) {
       await fetchPoData();
       setLoading(false);
 
-      setQrUrl(`${window.location.origin}/approval-po/${poId}`);
+      // Pakai NEXT_PUBLIC_SITE_URL (kalau di-set) supaya QR selalu mengarah ke
+      // URL production, bukan localhost — walau halaman ini dibuka dari dev
+      // server lokal saat generate/print dokumen.
+      const siteUrl =
+        process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+      setQrUrl(`${siteUrl}/approval-po/${poId}`);
     };
     initializePage();
   }, [poId]);

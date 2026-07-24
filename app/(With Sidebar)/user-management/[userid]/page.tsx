@@ -187,18 +187,18 @@ function EditUserPageContent({ params }: { params: { userid: string } }) {
     const supabase = createClient();
 
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          // Update semua field yang ada di formData
-          nama: formData.nama,
-          role: formData.role,
-          lokasi: formData.lokasi,
-          department: formData.department,
-          company: formData.company,
-          nrp: formData.nrp,
-        })
-        .eq("id", user.id);
+      // Lewat RPC admin_update_user_profile (bukan update langsung) karena
+      // profiles.role/company/department/nrp cuma boleh diubah oleh admin —
+      // RPC ini yang memvalidasi role pemanggil di sisi server.
+      const { error } = await supabase.rpc("admin_update_user_profile", {
+        p_user_id: user.id,
+        p_nama: formData.nama,
+        p_nrp: formData.nrp,
+        p_company: formData.company,
+        p_department: formData.department,
+        p_role: formData.role,
+        p_lokasi: formData.lokasi,
+      });
 
       if (error) throw error;
 
@@ -240,10 +240,10 @@ function EditUserPageContent({ params }: { params: { userid: string } }) {
     const supabase = createClient();
 
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ is_active: nextActive })
-        .eq("id", user.id);
+      const { error } = await supabase.rpc("admin_update_user_profile", {
+        p_user_id: user.id,
+        p_is_active: nextActive,
+      });
 
       if (error) throw error;
 

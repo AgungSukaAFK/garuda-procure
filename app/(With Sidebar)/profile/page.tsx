@@ -119,8 +119,9 @@ export default function Dashboard() {
   // Handler untuk setiap perubahan input
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    // REVISI: Pastikan hanya field yang editable yang diupdate
-    if (name === "nama" || name === "nrp") {
+    // Cuma nama & lokasi yang boleh diubah sendiri oleh user — nrp/department/
+    // company/role cuma bisa diubah admin lewat User Management.
+    if (name === "nama") {
       setFormData((prevData) => ({
         ...prevData,
         [name]: value || null, // Simpan null jika kosong
@@ -130,8 +131,7 @@ export default function Dashboard() {
 
   // Handler perubahan dari Combobox (lebih generik)
   const handleComboboxChange = (field: keyof Profile, value: string) => {
-    // REVISI: Pastikan hanya field yang editable yang diupdate
-    if (field === "lokasi" || field === "department") {
+    if (field === "lokasi") {
       setFormData((prevData) => ({ ...prevData, [field]: value || null }));
     }
   };
@@ -144,12 +144,10 @@ export default function Dashboard() {
     const supabase = createClient();
 
     try {
-      // REVISI: Hanya update field yang bisa diedit
+      // Hanya nama & lokasi yang boleh diubah sendiri (lihat handleInputChange).
       const dataToUpdate: Partial<Profile> = {
         nama: formData.nama,
-        nrp: formData.nrp,
         lokasi: formData.lokasi,
-        department: formData.department,
       };
 
       console.log("Updating profile with:", dataToUpdate); // Log data yang akan diupdate
@@ -237,22 +235,12 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* REVISI: NRP (Editable) */}
+          {/* NRP: hanya admin yang boleh mengubah, lewat User Management. */}
           <div>
             <Label className="mb-2 block font-medium">NRP</Label>
-            {!editMode ? (
-              <p className="p-2 border border-border rounded-md bg-muted/50 min-h-[36px] flex items-center">
-                {profile?.nrp || "-"}
-              </p>
-            ) : (
-              <Input
-                placeholder="Nomor Registrasi Pokok"
-                name="nrp"
-                value={formData.nrp || ""}
-                onChange={handleInputChange}
-                disabled={isUpdating}
-              />
-            )}
+            <p className="p-2 border border-border rounded-md bg-muted/30 text-muted-foreground min-h-[36px] flex items-center">
+              {profile?.nrp || "-"}
+            </p>
           </div>
 
           <div>
@@ -286,20 +274,12 @@ export default function Dashboard() {
               />
             )}
           </div>
+          {/* Departemen: hanya admin yang boleh mengubah, lewat User Management. */}
           <div>
             <Label className="mb-2 block font-medium">Departemen</Label>
-            {!editMode ? (
-              <p className="p-2 border border-border rounded-md bg-muted/50 min-h-[36px] flex items-center">
-                {profile?.department || "-"}
-              </p>
-            ) : (
-              <Combobox
-                data={dataDepartment}
-                onChange={(value) => handleComboboxChange("department", value)}
-                defaultValue={formData.department || ""}
-                disabled={isUpdating} // Disable saat proses update
-              />
-            )}
+            <p className="p-2 border border-border rounded-md bg-muted/30 text-muted-foreground min-h-[36px] flex items-center">
+              {profile?.department || "-"}
+            </p>
           </div>
         </div>
 
